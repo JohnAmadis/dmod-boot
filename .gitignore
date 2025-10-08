@@ -3,13 +3,21 @@ CMakeCache.txt
 CMakeFiles
 CMakeScripts
 Testing
-Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+
+# Build artifacts
+build/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
 
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
