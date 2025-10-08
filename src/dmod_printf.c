@@ -119,6 +119,8 @@ static void write_entry(const char *data, uint32_t length)
         tail = (tail + sizeof(dmod_log_entry_header_t) + old_header.length) % DMOD_LOG_TOTAL_SIZE;
         
         /* Safety check - if tail catches head or buffer seems corrupted, reset */
+        /* Note: tail == head should only occur if buffer is corrupted, not during normal operation */
+        /* because we check free space before writing and always keep at least 1 byte free */
         if (tail == head || old_header.length > DMOD_LOG_MAX_ENTRY_SIZE) {
             tail = 0;
             head = 0;

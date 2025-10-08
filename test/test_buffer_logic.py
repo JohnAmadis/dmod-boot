@@ -15,6 +15,9 @@ import struct
 class SimulatedRingBuffer:
     """Simulates the C ring buffer implementation"""
     
+    # Constants for safety checks
+    MAX_ITERATIONS = 1000  # Maximum iterations when reading entries
+    
     def __init__(self, total_size=1024, max_entry_size=256):
         self.total_size = total_size
         self.max_entry_size = max_entry_size
@@ -54,7 +57,9 @@ class SimulatedRingBuffer:
             # Advance tail past this entry
             self.tail_offset = (tail + 6 + entry_length) % self.total_size
             
-            # Safety check
+            # Safety check - if tail catches head or buffer seems corrupted, reset
+            # Note: tail == head should only occur if buffer is corrupted, not during normal operation
+            # because we check free space before writing and always keep at least 1 byte free
             if self.tail_offset == self.head_offset or entry_length > self.max_entry_size:
                 self.tail_offset = 0
                 self.head_offset = 0
@@ -102,13 +107,15 @@ class SimulatedRingBuffer:
         entries = []
         current_offset = self.tail_offset
         
-        while current_offset != self.head_offset:
+        iterations = 0
+        while current_offset != self.head_offset and iterations < self.MAX_ITERATIONS:
+            iterations += 1
             entry = self.read_entry_at_offset(current_offset)
             entries.append(entry)
             current_offset = entry['next_offset']
             
-            # Safety check
-            if len(entries) > 1000:
+            # Safety check: if we've wrapped around to tail, stop
+            if iterations > 1 and current_offset == self.tail_offset:
                 break
         
         return entries
@@ -176,19 +183,23 @@ def test_memory_efficiency():
     print("Test 4: Memory efficiency comparison")
     
     # Old design: 128 entries × 264 bytes = 33,792 bytes
-    old_design_size = 128 * (4 + 4 + 256)  # id + length + buffer
+    # Each entry: id(4) + length(4) + buffer(256) = 264 bytes
+    OLD_ENTRIES = 128
+    OLD_ENTRY_SIZE = 264
+    old_design_size = OLD_ENTRIES * OLD_ENTRY_SIZE
     
     # New design: For same usage pattern
     # Assume average log is 50 bytes
     # New design can fit: 8192 / (6 + 50) ≈ 146 entries
-    new_design_size = 8192
-    avg_entry_size = 50
-    new_entries = new_design_size // (6 + avg_entry_size)
+    NEW_BUFFER_SIZE = 8192
+    AVG_ENTRY_SIZE = 50
+    ENTRY_HEADER_SIZE = 6  # id(4) + length(2)
+    new_entries = NEW_BUFFER_SIZE // (ENTRY_HEADER_SIZE + AVG_ENTRY_SIZE)
     
-    efficiency = (old_design_size / new_design_size) * 100
+    efficiency = (old_design_size / NEW_BUFFER_SIZE) * 100
     
-    print(f"  Old design: {old_design_size} bytes for 128 entries")
-    print(f"  New design: {new_design_size} bytes for ~{new_entries} entries (avg {avg_entry_size} bytes)")
+    print(f"  Old design: {old_design_size} bytes for {OLD_ENTRIES} entries ({OLD_ENTRY_SIZE} bytes each)")
+    print(f"  New design: {NEW_BUFFER_SIZE} bytes for ~{new_entries} entries (avg {AVG_ENTRY_SIZE} bytes)")
     print(f"  ✓ Memory savings: {efficiency:.1f}% more efficient")
 
 
