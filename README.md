@@ -155,11 +155,11 @@ You can customize the ring buffer configuration using Makefile variables:
 
 ```bash
 # Build with custom ring buffer settings
-make TARGET=STM32F746 DMOD_LOG_ENTRIES=256 DMOD_LOG_BUFFER_SIZE=512
+make TARGET=STM32F746 DMOD_LOG_TOTAL_SIZE=16384 DMOD_LOG_MAX_ENTRY_SIZE=1024
 
 # Default values:
-# DMOD_LOG_ENTRIES=128       (number of log entries)
-# DMOD_LOG_BUFFER_SIZE=256   (bytes per entry buffer)
+# DMOD_LOG_TOTAL_SIZE=8192       (total buffer size in bytes)
+# DMOD_LOG_MAX_ENTRY_SIZE=512    (maximum size of a single log entry)
 ```
 
 ### Clean Build Artifacts
@@ -202,6 +202,9 @@ int main(void) {
     Dmod_Printf("Counter: %d\n", 42);
     Dmod_Printf("Hex: 0x%X\n", 0xDEADBEEF);
     
+    // Clear buffer if needed (for re-synchronization)
+    // Dmod_Log_Clear();
+    
     while (1) {
         // Your code here
     }
@@ -223,12 +226,19 @@ int main(void) {
 ### Ring Buffer Structure
 
 The ring buffer consists of:
+- **magic**: Magic number for validation (0x444D4F44 = "DMOD")
 - **latest_id**: Most recent log entry ID (uint32_t) - easy to monitor for new logs
-- **write_index**: Current write position (uint32_t)
-- **entries**: Array of log entries, each containing:
-  - **id**: Unique incrementing ID for the entry
-  - **length**: Actual message length
-  - **buffer**: Message data
+- **flags**: Command/status flags (uint32_t) - bit 0: clear buffer command
+- **head_offset**: Offset to the newest entry in the buffer (uint32_t)
+- **tail_offset**: Offset to the oldest entry in the buffer (uint32_t)
+- **buffer**: Variable-length log entries stored sequentially
+
+Each log entry in the buffer has:
+- **id**: Unique incrementing ID (uint32_t)
+- **length**: Message length in bytes (uint16_t)
+- **data**: Message data (variable length)
+
+The buffer automatically wraps around and overwrites old entries when full.
 
 ### Monitoring Logs
 
@@ -317,9 +327,12 @@ The minimal design makes it easy to add features:
 ### Ring Buffer Memory Usage
 
 With default configuration:
-- **Entries**: 128
-- **Buffer size per entry**: 256 bytes
-- **Total size**: ~33.8 KB (8 bytes control + 128 × 264 bytes)
+- **Total buffer size**: 8192 bytes
+- **Max entry size**: 512 bytes
+- **Control overhead**: 20 bytes
+- **Total memory**: ~8.2 KB
+
+The new dynamic allocation design is much more memory-efficient than the old fixed-size approach, using only the space needed for actual log messages.
 
 ## Contributing
 
@@ -356,7 +369,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Solution**: Ensure all source files are included in the Makefile
 
 **Problem**: Ring buffer takes too much RAM
-- **Solution**: Reduce `DMOD_LOG_ENTRIES` or `DMOD_LOG_BUFFER_SIZE` in the Makefile
+- **Solution**: The new design uses dynamic allocation, so you only need to adjust `DMOD_LOG_TOTAL_SIZE` in the Makefile (e.g., 4096 bytes for smaller systems)
 
 ### Debugging Issues
 

@@ -77,18 +77,22 @@ The script reads a memory structure with:
 
 ```c
 typedef struct {
-    volatile uint32_t magic;          // 0x444D4F44 ("DMOD")
-    volatile uint32_t latest_id;      // Most recent log entry ID
-    volatile uint32_t write_index;    // Current write position
-    dmod_log_entry_t entries[128];    // Array of log entries
+    volatile uint32_t magic;           // 0x444D4F44 ("DMOD")
+    volatile uint32_t latest_id;       // Most recent log entry ID
+    volatile uint32_t flags;           // Command/status flags (bit 0: clear buffer)
+    volatile uint32_t head_offset;     // Offset to newest entry
+    volatile uint32_t tail_offset;     // Offset to oldest entry
+    volatile uint8_t buffer[8192];     // Variable-length entries
 } dmod_log_ring_t;
 
 typedef struct {
-    volatile uint32_t id;             // Unique entry ID
-    volatile uint32_t length;         // Message length
-    volatile char buffer[256];        // Message data
-} dmod_log_entry_t;
+    volatile uint32_t id;              // Unique entry ID
+    volatile uint16_t length;          // Message length
+    // followed by message data (variable length)
+} __attribute__((packed)) dmod_log_entry_header_t;
 ```
+
+The new design uses a single fixed-size buffer with variable-length entries, which is much more memory-efficient than the old fixed-size entry approach.
 
 ### OpenOCD Setup
 
@@ -133,17 +137,17 @@ Normal operation:
 ```
 Loading addresses from build/STM32F746_dmod_addresses.txt
 Ring buffer address: 0x20000124
-Entries: 128
-Buffer size: 256
+Total buffer size: 8192 bytes
+Max entry size: 512 bytes
 
 Connecting to OpenOCD at localhost:4444...
 Connected to OpenOCD
 
 Monitoring dmod-boot log ring buffer at 0x20000124
-Ring size: 128 entries, buffer size: 256 bytes
+Buffer size: 8192 bytes, max entry: 512 bytes
 Press Ctrl+C to stop
 
-Starting from log ID: 1234, write index: 56
+Starting from log ID: 1234, head: 1024, tail: 0
 dmod-boot initialized
 System starting...
 Ring buffer debug output enabled
@@ -157,10 +161,8 @@ Counter: 1237 (0x4D5)
 With debug enabled:
 ```
 2024-10-08 14:30:15 - __main__ - DEBUG - latest_id changed from 1234 to 1235
-2024-10-08 14:30:15 - __main__ - DEBUG - Found 1 new entries
-2024-10-08 14:30:15 - __main__ - DEBUG - Reading 1 entries from index 56
-2024-10-08 14:30:15 - __main__ - DEBUG - Reading entry 56 from addr 0x20004c78, got 264 bytes
-2024-10-08 14:30:15 - __main__ - DEBUG - Entry 56: id=1235, length=22
+2024-10-08 14:30:15 - __main__ - DEBUG - Found new entries, reading from tail 0 to head 1024
+2024-10-08 14:30:15 - __main__ - DEBUG - Reading entry at offset 0: id=1235, length=22
 Counter: 1235 (0x4D3)
 ```
 
@@ -172,11 +174,11 @@ You can also manually inspect the ring buffer using OpenOCD's telnet interface:
 # Connect to OpenOCD telnet
 telnet localhost 4444
 
-# Read ring buffer control structure (magic, latest_id, write_index)
-mdw 0x20000124 3
+# Read ring buffer control structure (magic, latest_id, flags, head_offset, tail_offset)
+mdw 0x20000124 5
 
-# Read first log entry (66 words = 264 bytes)
-mdw 0x20000130 66
+# Read buffer data at specific offset
+mdw 0x20000138 32
 
 # Halt target for stable reading
 halt
@@ -265,8 +267,8 @@ Address file format:
 ```
 # Comments start with #
 DMOD_LOG_RING_ADDR=0x20000124
-DMOD_LOG_ENTRIES=128
-DMOD_LOG_BUFFER_SIZE=256
+DMOD_LOG_TOTAL_SIZE=8192
+DMOD_LOG_MAX_ENTRY_SIZE=512
 ```
 
 #### Remote OpenOCD
