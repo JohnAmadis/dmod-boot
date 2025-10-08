@@ -267,6 +267,15 @@ class DmodLogMonitor:
         self.last_id = control['latest_id']
         print(f"Starting from log ID: {self.last_id}, head: {control['head_offset']}, tail: {control['tail_offset']}")
         
+        # Read and display all existing entries on startup
+        if self.last_id > 0 and control['tail_offset'] != control['head_offset']:
+            print("Reading existing log entries...\n")
+            entries = self.read_entries_from_tail(control['tail_offset'], control['head_offset'], 1)
+            for entry in entries:
+                print(entry['message'], end='')
+            if entries:
+                print()  # Extra newline after existing entries
+        
         try:
             while True:
                 control = self.read_ring_control()

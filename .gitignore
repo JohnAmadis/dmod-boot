@@ -20,6 +20,11 @@ build/
 *.dis
 *_dmod_addresses.txt
 
+# Test artifacts
+test/dmod_test_x86
+test/*.o
+test/../src/*.o
+
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

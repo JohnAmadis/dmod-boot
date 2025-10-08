@@ -9,7 +9,13 @@
 #include <stddef.h>
 
 /* Ring buffer placed in special linker section */
+#ifdef DMOD_X86_TEST
+/* For x86 testing, don't use special section */
+dmod_log_ring_t dmod_log_ring;
+#else
+/* For embedded targets, place in special linker section */
 __attribute__((section(".dmod_log_ring"))) dmod_log_ring_t dmod_log_ring;
+#endif
 
 /* Helper function prototypes */
 static void print_to_buffer(char ch);
@@ -108,7 +114,6 @@ static void write_entry(const char *data, uint32_t length)
     while (get_free_space(head, tail) < entry_total_size + 1) {
         /* Read the entry at tail to get its size */
         dmod_log_entry_header_t old_header;
-        uint32_t offset = 0;
         
         /* Read old entry header */
         for (i = 0; i < sizeof(dmod_log_entry_header_t); i++) {

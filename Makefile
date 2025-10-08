@@ -170,6 +170,20 @@ monitor: $(ADDR_FILE)
 	@echo "Starting log monitor for $(TARGET)..."
 	@python3 $(SCRIPTS_DIR)/dmod_log_monitor.py --target $(TARGET)
 
+# Run tests
+.PHONY: test
+test:
+	@echo "Running Python simulation tests..."
+	@python3 test/test_buffer_logic.py
+	@echo ""
+	@echo "Running x86 native tests..."
+	@cd test && $(MAKE) test
+
+# Clean test artifacts
+.PHONY: test-clean
+test-clean:
+	@cd test && $(MAKE) clean
+
 # Help
 .PHONY: help
 help:
@@ -180,10 +194,12 @@ help:
 	@echo "  make install            - Build and install firmware on target"
 	@echo "  make connect            - Connect to target with OpenOCD"
 	@echo "  make monitor            - Monitor log output from target"
+	@echo "  make test               - Run all tests (Python + x86)"
 	@echo "  make stm32f746          - Build for STM32F746"
 	@echo "  make stm32f407          - Build for STM32F407"
 	@echo "  make all-targets        - Build for all targets"
 	@echo "  make clean              - Remove build artifacts"
+	@echo "  make test-clean         - Remove test artifacts"
 	@echo "  make disasm             - Generate disassembly"
 	@echo "  make help               - Show this help message"
 	@echo ""
@@ -199,3 +215,7 @@ help:
 	@echo "  make install            - Program firmware via OpenOCD"
 	@echo "  make connect            - Start OpenOCD server for debugging"
 	@echo "  make monitor            - Monitor debug logs via OpenOCD"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test               - Run all tests (Python simulation + x86 native)"
+	@echo "  make test-clean         - Clean test build artifacts"
