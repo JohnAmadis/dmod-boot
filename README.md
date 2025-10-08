@@ -13,7 +13,7 @@ dmod-boot is a minimal bootloader framework designed for embedded systems, speci
 - **Multiple Architecture Support**: Linker scripts and startup code for various STM32 families
 - **Minimal Footprint**: Optimized for size and efficiency
 - **Easy to Extend**: Clean structure for adding support for additional microcontrollers
-- **OpenOCD Integration**: Python script for monitoring logs via OpenOCD
+- **Integrated Development Workflow**: Built-in commands for building, flashing, and monitoring
 
 ## Supported Targets
 
@@ -64,6 +64,66 @@ dmod-boot/
 - **OpenOCD**: For flashing and debugging
 - **GDB**: For debugging
 - **ST-Link** utilities as alternative to OpenOCD
+
+## Quick Start
+
+### 1. Build and Flash Firmware
+
+```bash
+# Build for default target (STM32F746)
+make
+
+# Build and flash to target
+make install
+
+# Or build for specific target
+make TARGET=STM32F407
+make install TARGET=STM32F407
+```
+
+### 2. Connect and Monitor Logs
+
+```bash
+# Start OpenOCD in background (separate terminal)
+make connect
+
+# Monitor real-time logs (another terminal)
+make monitor
+```
+
+That's it! You should see live debug output from your microcontroller.
+
+## Development Workflow
+
+The integrated Makefile provides a complete development workflow:
+
+| Command | Description |
+|---------|-------------|
+| `make` | Build firmware for default target (STM32F746) |
+| `make TARGET=STM32F407` | Build for specific target |
+| `make install` | Build and flash firmware to target |
+| `make connect` | Start OpenOCD server for debugging |
+| `make monitor` | Monitor live debug logs from target |
+| `make clean` | Clean build artifacts |
+| `make help` | Show all available commands |
+
+### Example Development Session
+
+```bash
+# 1. Build and flash your code
+make clean
+make install
+
+# 2. In separate terminal - start debugging server
+make connect
+
+# 3. In another terminal - watch live logs
+make monitor
+
+# 4. Make code changes, then rebuild and reflash
+make install
+# Logs will update automatically in monitor terminal
+```
 
 ## Building
 
@@ -170,47 +230,39 @@ The ring buffer consists of:
   - **length**: Actual message length
   - **buffer**: Message data
 
-### Monitoring Logs via OpenOCD
+### Monitoring Logs
 
-A Python script is provided to monitor logs in real-time via OpenOCD:
+For live monitoring of debug output, use the integrated workflow:
 
-1. **Start OpenOCD** with your target:
 ```bash
-# For STM32F746
+# Start OpenOCD server
+make connect
+
+# Monitor logs in real-time (separate terminal)
+make monitor
+```
+
+For advanced monitoring options and troubleshooting, see [scripts/README.md](scripts/README.md).
+
+## Advanced Usage
+
+### Manual Commands
+
+If you need more control, you can run commands manually:
+
+```bash
+# Manual OpenOCD commands
 openocd -f interface/stlink.cfg -f target/stm32f7x.cfg
 
-# For STM32F407
-openocd -f interface/stlink.cfg -f target/stm32f4x.cfg
+# Manual monitoring with options
+python3 scripts/dmod_log_monitor.py --target STM32F746 --debug
+
+# Manual flashing
+openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \
+    -c "program build/STM32F746.elf verify reset exit"
 ```
 
-2. **Run the monitoring script** (in a separate terminal):
-```bash
-# Monitor STM32F746 logs
-python3 scripts/dmod_log_monitor.py --target STM32F746
-
-# Monitor STM32F407 logs
-python3 scripts/dmod_log_monitor.py --target STM32F407
-
-# With custom OpenOCD connection
-python3 scripts/dmod_log_monitor.py --host localhost --port 6666 --interval 0.1
-```
-
-The script will:
-- Read the ring buffer address from `build/<TARGET>_dmod_addresses.txt`
-- Connect to OpenOCD's TCL server
-- Poll the ring buffer for new log entries
-- Display messages in real-time
-
-### Manual Memory Inspection
-
-You can also manually inspect the ring buffer using OpenOCD or GDB:
-
-```bash
-# In OpenOCD telnet interface (port 4444)
-# Read ring buffer address from build/<TARGET>_dmod_addresses.txt
-mdw 0x20000124 10    # Read latest_id and write_index
-mdw 0x2000012c 66    # Read first entry (264 bytes = 66 words)
-```
+For detailed script usage and troubleshooting, see [scripts/README.md](scripts/README.md).
 
 ## Flashing the Firmware
 
