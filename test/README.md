@@ -77,3 +77,63 @@ Benefits of having an x86 test target:
 
 This makes the repository truly target-independent as requested.
 
+## Simulated OpenOCD Testing (simulate_openocd.py)
+
+A simulated OpenOCD server that creates a virtual memory environment matching the ring buffer format.
+This allows testing the Python monitor script (`dmod_log_monitor.py`) without needing actual hardware or OpenOCD.
+
+### Running the Simulator
+
+In one terminal:
+
+```bash
+cd test
+python3 simulate_openocd.py
+```
+
+In another terminal:
+
+```bash
+python3 scripts/dmod_log_monitor.py --port 4445 --addr-file test/simulated_addresses.txt
+```
+
+### What it Tests
+
+The simulated OpenOCD environment validates:
+- OpenOCD telnet protocol handling
+- Memory read commands (`mdw`)
+- Ring buffer control structure parsing
+- Variable-length entry reading
+- Monitor script's ability to decode and display logs
+- Continuous log monitoring with new entries
+
+### How it Works
+
+1. **Memory Simulation**: Creates a byte array matching the ring buffer structure
+2. **OpenOCD Protocol**: Implements a subset of OpenOCD's telnet commands
+3. **Live Updates**: Continuously adds new log entries to simulate a running system
+4. **Network Server**: Listens on port 4445 (to avoid conflicts with real OpenOCD on 4444)
+
+### Configuration
+
+Edit `test/simulated_addresses.txt` to adjust:
+- Ring buffer address
+- Total buffer size
+- Max entry size
+
+Edit `test/simulate_openocd.py` to adjust:
+- Initial log messages
+- Rate of new log generation
+- Buffer configuration
+
+### Benefits
+
+- **End-to-end testing** - Validates the entire monitor→OpenOCD→target chain
+- **No hardware needed** - Test without STM32 boards
+- **Reproducible** - Same behavior every time
+- **Fast debugging** - Add print statements to see protocol details
+- **Integration testing** - Validates monitor script with realistic OpenOCD responses
+
+This completes the target-independent testing infrastructure as requested.
+
+

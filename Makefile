@@ -170,6 +170,14 @@ monitor: $(ADDR_FILE)
 	@echo "Starting log monitor for $(TARGET)..."
 	@python3 $(SCRIPTS_DIR)/dmod_log_monitor.py --target $(TARGET)
 
+# Run simulated OpenOCD for testing monitor script
+.PHONY: test-monitor
+test-monitor:
+	@echo "Starting simulated OpenOCD server..."
+	@echo "In another terminal, run:"
+	@echo "  python3 scripts/dmod_log_monitor.py --port 4445 --addr-file test/simulated_addresses.txt"
+	@python3 test/simulate_openocd.py
+
 # Run tests
 .PHONY: test
 test:
@@ -195,6 +203,7 @@ help:
 	@echo "  make connect            - Connect to target with OpenOCD"
 	@echo "  make monitor            - Monitor log output from target"
 	@echo "  make test               - Run all tests (Python + x86)"
+	@echo "  make test-monitor       - Run simulated OpenOCD for testing"
 	@echo "  make stm32f746          - Build for STM32F746"
 	@echo "  make stm32f407          - Build for STM32F407"
 	@echo "  make all-targets        - Build for all targets"
@@ -218,4 +227,5 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test               - Run all tests (Python simulation + x86 native)"
+	@echo "  make test-monitor       - Run simulated OpenOCD for monitor script testing"
 	@echo "  make test-clean         - Clean test build artifacts"

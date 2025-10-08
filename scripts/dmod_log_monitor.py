@@ -40,8 +40,7 @@ class OpenOCDClient:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
             # Telnet server sends initial prompt - read it
-            if self.port == 4444:  # telnet port
-                self.sock.recv(4096)
+            self.sock.recv(4096)  # Always consume initial prompt
             return True
         except Exception as e:
             logger.error(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
@@ -84,7 +83,9 @@ class OpenOCDClient:
     
     def read_memory(self, address, size):
         """Read memory from target"""
-        cmd = f"mdw 0x{address:08x} {size//4}"
+        # mdw reads in words (4 bytes), so we need to round up
+        words_needed = (size + 3) // 4  # Round up to next word boundary
+        cmd = f"mdw 0x{address:08x} {words_needed}"
         response = self.send_command(cmd)
         if not response:
             logger.debug(f"No response from OpenOCD for command: {cmd}")
