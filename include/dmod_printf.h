@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <stdarg.h>
 
+#ifndef DMOD_MAGIC_NUMBER
+#define DMOD_MAGIC_NUMBER    0x444D4F44  /* 'DMOD' */
+#endif
+
 /* Configuration - can be overridden by Makefile */
 #ifndef DMOD_LOG_ENTRIES
 #define DMOD_LOG_ENTRIES    128
@@ -43,6 +47,7 @@ typedef struct {
  * - entries: Array of log entries
  */
 typedef struct {
+    volatile uint32_t magic;          
     volatile uint32_t latest_id;
     volatile uint32_t write_index;
     dmod_log_entry_t entries[DMOD_LOG_ENTRIES];

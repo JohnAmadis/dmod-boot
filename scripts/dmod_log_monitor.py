@@ -11,7 +11,7 @@ Usage:
 Options:
     --target TARGET     Target name (STM32F746 or STM32F407), default: STM32F746
     --host HOST         OpenOCD host, default: localhost
-    --port PORT         OpenOCD TCL port, default: 6666
+    --port PORT         OpenOCD telnet port, default: 4444
     --interval SECONDS  Polling interval in seconds, default: 0.1
     --addr-file FILE    Address file path, default: build/TARGET_dmod_addresses.txt
 """
@@ -27,18 +27,19 @@ from pathlib import Path
 class OpenOCDClient:
     """Simple OpenOCD TCL client"""
     
-    def __init__(self, host='localhost', port=6666):
+    def __init__(self, host='localhost', port=4444):  # Changed default port to 4444
         self.host = host
         self.port = port
         self.sock = None
     
     def connect(self):
-        """Connect to OpenOCD TCL server"""
+        """Connect to OpenOCD telnet server"""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
-            # Read initial prompt
-            self.sock.recv(4096)
+            # Telnet server sends initial prompt - read it
+            if self.port == 4444:  # telnet port
+                self.sock.recv(4096)
             return True
         except Exception as e:
             print(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
@@ -50,9 +51,31 @@ class OpenOCDClient:
             return None
         
         try:
+            # Send command
             self.sock.sendall((cmd + '\n').encode())
-            response = self.sock.recv(16384).decode('utf-8', errors='ignore')
-            return response.strip()
+            
+            # Read response until we get the prompt
+            response = b''
+            prompt = b'> '
+            
+            while True:
+                chunk = self.sock.recv(1024)
+                if not chunk:
+                    break
+                response += chunk
+                
+                # Check if we got the prompt (may be at the end)
+                if prompt in response:
+                    # Remove the prompt and everything after it
+                    prompt_pos = response.rfind(prompt)
+                    response = response[:prompt_pos]
+                    break
+                
+                # Safety check
+                if len(response) > 32768:
+                    break
+            
+            return response.decode('utf-8', errors='ignore').strip()
         except Exception as e:
             print(f"Error sending command: {e}")
             return None
@@ -62,26 +85,43 @@ class OpenOCDClient:
         cmd = f"mdw 0x{address:08x} {size//4}"
         response = self.send_command(cmd)
         if not response:
+            print(f"No response from OpenOCD for command: {cmd}")
             return None
         
-        # Parse response - format: "0xADDRESS: 0xVALUE ..."
+        # Parse response - format: "0xADDRESS: VALUE VALUE ..."
+        # Values are in hex but without 0x prefix
         words = []
-        for line in response.split('\n'):
-            if ':' in line:
-                parts = line.split(':')[1].strip().split()
-                for part in parts:
-                    if part.startswith('0x'):
-                        try:
-                            words.append(int(part, 16))
-                        except ValueError:
-                            pass
         
-        # Convert words to bytes
+        # Clean up the response - remove null bytes and normalize line endings
+        cleaned_response = response.replace('\x00', '').replace('\r\n', '\n').replace('\r', '\n')
+        lines = cleaned_response.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            # Look for lines containing memory data with format "0xADDRESS: VALUE VALUE ..."
+            if ':' in line and '0x' in line and 'mdw' not in line.lower():
+                try:
+                    # Split by colon and get the values part
+                    addr_part, values_part = line.split(':', 1)
+                    values = values_part.strip().split()
+                    
+                    for value in values:
+                        value = value.strip()
+                        # Values are hex strings without 0x prefix, should be 8 chars
+                        if value and len(value) == 8:
+                            try:
+                                words.append(int(value, 16))
+                            except ValueError:
+                                continue
+                except (IndexError, ValueError):
+                    continue
+        
+        # Convert words to bytes (little endian)
         data = b''
         for word in words:
             data += struct.pack('<I', word)
         
-        return data[:size]
+        return data[:size] if len(data) >= size else None
     
     def close(self):
         """Close connection"""
@@ -102,16 +142,38 @@ class DmodLogMonitor:
         
         # Calculate sizes
         self.entry_size = 8 + buffer_size  # id (4) + length (4) + buffer
-        self.ring_control_size = 8  # latest_id (4) + write_index (4)
+        self.ring_control_size = 12  # magic (4) + latest_id (4) + write_index (4)
+        self.expected_magic = 0x444D4F44  # 'DMOD'
     
     def read_ring_control(self):
         """Read ring buffer control structure"""
-        data = self.client.read_memory(self.ring_addr, self.ring_control_size)
-        if not data or len(data) < self.ring_control_size:
-            return None, None
+        for attempt in range(3):  # Only 3 attempts as requested
+            data = self.client.read_memory(self.ring_addr, self.ring_control_size)
+            if data and len(data) >= self.ring_control_size:
+                magic, latest_id, write_index = struct.unpack('<III', data)
+                
+                # First validate magic number
+                if magic != self.expected_magic:
+                    print(f"Attempt {attempt+1}: Invalid magic number - expected: 0x{self.expected_magic:08x}, got: 0x{magic:08x}")
+                    time.sleep(0.01)
+                    continue
+                
+                # Validate the values - they should be reasonable
+                if (latest_id < 0xFFFFFF00 and  # Not a crazy high value (likely corrupted)
+                    write_index < self.entries):  # Write index should be within ring bounds
+                    return latest_id, write_index
+                else:
+                    # Debug: print suspicious values
+                    print(f"Attempt {attempt+1}: Suspicious values - latest_id: 0x{latest_id:08x}, write_index: {write_index}")
+            else:
+                print(f"Attempt {attempt+1}: Failed to read data or insufficient data length")
+            
+            # Short delay between retries
+            time.sleep(0.01)
         
-        latest_id, write_index = struct.unpack('<II', data)
-        return latest_id, write_index
+        # All attempts failed
+        print("Failed to read valid ring control after 3 attempts")
+        return None, None
     
     def read_entry(self, index):
         """Read a single log entry"""
@@ -122,6 +184,9 @@ class DmodLogMonitor:
             return None
         
         entry_id, length = struct.unpack('<II', data[:8])
+        if length > self.buffer_size:
+            return None
+        
         buffer_data = data[8:8+length]
         
         return {
@@ -136,35 +201,57 @@ class DmodLogMonitor:
         print(f"Ring size: {self.entries} entries, buffer size: {self.buffer_size} bytes")
         print("Press Ctrl+C to stop\n")
         
+        # Initialize - start from current position to avoid reading old entries
+        # 3 tries to read the control structure to ensure we have valid data
+        for _ in range(3):
+            latest_id, write_index = self.read_ring_control()
+            if latest_id is not None:
+                break
+            time.sleep(0.1)
+        if latest_id is None:
+            print("Failed to read ring buffer control")
+            return
+        
+        self.last_id = latest_id
+        last_write_index = write_index
+        print(f"Starting from log ID: {latest_id}, write index: {write_index}")
+        
         try:
             while True:
                 latest_id, write_index = self.read_ring_control()
                 
                 if latest_id is None:
-                    print("Failed to read ring control")
                     time.sleep(interval)
                     continue
                 
                 # Check if there are new entries
                 if latest_id > self.last_id:
-                    # Calculate how many new entries we have
-                    new_entries = min(latest_id - self.last_id, self.entries)
+                    num_new_entries = latest_id - self.last_id
                     
-                    # Read new entries
-                    for i in range(new_entries):
-                        # Calculate which entry to read
-                        # We want to read from (latest_id - new_entries + i + 1)
-                        target_id = self.last_id + i + 1
+                    # Calculate starting position for reading new entries
+                    # If we have more new entries than ring size, start from oldest available
+                    if num_new_entries >= self.entries:
+                        # Ring buffer wrapped, start from current write_index (oldest entry)
+                        start_index = write_index
+                        entries_to_read = self.entries
+                        start_id = latest_id - self.entries + 1
+                    else:
+                        # Calculate where the new entries start
+                        # Work backwards from write_index
+                        start_index = (write_index - num_new_entries) % self.entries
+                        entries_to_read = num_new_entries
+                        start_id = self.last_id + 1
+                    
+                    # Read entries sequentially from start_index
+                    for i in range(entries_to_read):
+                        entry_index = (start_index + i) % self.entries
+                        entry = self.read_entry(entry_index)
                         
-                        # Find the entry with this ID
-                        for idx in range(self.entries):
-                            entry = self.read_entry(idx)
-                            if entry and entry['id'] == target_id:
-                                # Print the message without newline since it's already in the message
-                                print(entry['message'], end='')
-                                break
+                        if entry and entry['id'] >= start_id:
+                            print(entry['message'], end='')
                     
                     self.last_id = latest_id
+                    last_write_index = write_index
                 
                 time.sleep(interval)
                 
@@ -197,8 +284,8 @@ def main():
                         help='Target name (default: STM32F746)')
     parser.add_argument('--host', default='localhost',
                         help='OpenOCD host (default: localhost)')
-    parser.add_argument('--port', type=int, default=6666,
-                        help='OpenOCD TCL port (default: 6666)')
+    parser.add_argument('--port', type=int, default=4444,
+                        help='OpenOCD telnet port (default: 4444)')
     parser.add_argument('--interval', type=float, default=0.1,
                         help='Polling interval in seconds (default: 0.1)')
     parser.add_argument('--addr-file', default=None,

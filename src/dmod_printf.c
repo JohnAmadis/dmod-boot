@@ -29,6 +29,7 @@ void Dmod_Log_Init(void)
     uint32_t i;
     
     /* Initialize ring buffer control */
+    dmod_log_ring.magic = DMOD_MAGIC_NUMBER;
     dmod_log_ring.latest_id = 0;
     dmod_log_ring.write_index = 0;
     

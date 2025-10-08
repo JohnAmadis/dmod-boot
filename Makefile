@@ -30,15 +30,21 @@ ifeq ($(TARGET),STM32F746)
     CPU = cortex-m7
     FPU = -mfpu=fpv5-sp-d16
     FLOAT_ABI = -mfloat-abi=hard
+    OPENOCD_TARGET = target/stm32f7x.cfg
 else ifeq ($(TARGET),STM32F407)
     LINKER_SCRIPT = $(LINKER_DIR)/STM32F407xG.ld
     STARTUP_SRC = $(SRC_DIR)/startup_stm32f407.c
     CPU = cortex-m4
     FPU = -mfpu=fpv4-sp-d16
     FLOAT_ABI = -mfloat-abi=hard
+    OPENOCD_TARGET = target/stm32f4x.cfg
 else
     $(error Invalid TARGET. Use STM32F746 or STM32F407)
 endif
+
+# OpenOCD settings
+OPENOCD_INTERFACE = interface/stlink.cfg
+OPENOCD = openocd
 
 # Compiler flags
 CFLAGS = -mcpu=$(CPU) -mthumb $(FPU) $(FLOAT_ABI)
@@ -143,6 +149,27 @@ all-targets: stm32f746 stm32f407
 disasm: $(ELF)
 	@$(OBJDUMP) -d $< > $(BUILD_DIR)/$(TARGET).dis
 
+# Install firmware on target
+.PHONY: install
+install: $(ELF)
+	@echo "Installing firmware on $(TARGET)..."
+	@$(OPENOCD) -f $(OPENOCD_INTERFACE) -f $(OPENOCD_TARGET) \
+		-c "program $(ELF) verify reset exit"
+
+# Connect to target with OpenOCD
+.PHONY: connect
+connect:
+	@echo "Connecting to $(TARGET) with OpenOCD..."
+	@echo "OpenOCD will start and wait for connections (GDB: port 3333, Telnet: port 4444)"
+	@echo "Press Ctrl+C to stop OpenOCD"
+	@$(OPENOCD) -f $(OPENOCD_INTERFACE) -f $(OPENOCD_TARGET)
+
+# Monitor log output
+.PHONY: monitor
+monitor: $(ADDR_FILE)
+	@echo "Starting log monitor for $(TARGET)..."
+	@python3 $(SCRIPTS_DIR)/dmod_log_monitor.py --target $(TARGET)
+
 # Help
 .PHONY: help
 help:
@@ -150,6 +177,9 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make [TARGET=<target>]  - Build for specified target (default: STM32F746)"
+	@echo "  make install            - Build and install firmware on target"
+	@echo "  make connect            - Connect to target with OpenOCD"
+	@echo "  make monitor            - Monitor log output from target"
 	@echo "  make stm32f746          - Build for STM32F746"
 	@echo "  make stm32f407          - Build for STM32F407"
 	@echo "  make all-targets        - Build for all targets"
@@ -164,3 +194,8 @@ help:
 	@echo "Targets:"
 	@echo "  STM32F746 - STM32F746 (Cortex-M7, 1MB Flash, 320KB RAM)"
 	@echo "  STM32F407 - STM32F407 (Cortex-M4, 1MB Flash, 128KB RAM + 64KB CCM)"
+	@echo ""
+	@echo "OpenOCD Commands:"
+	@echo "  make install            - Program firmware via OpenOCD"
+	@echo "  make connect            - Start OpenOCD server for debugging"
+	@echo "  make monitor            - Monitor debug logs via OpenOCD"
