@@ -1,8 +1,8 @@
 /*
- * dmod_printf.h - ITM-based printf implementation for dmod-boot
+ * dmod_printf.h - Memory ring buffer based printf implementation for dmod-boot
  * 
- * This provides a minimal printf implementation using ARM's Instrumentation
- * Trace Macrocell (ITM) for debugging output without external libraries.
+ * This provides a minimal printf implementation using a memory ring buffer
+ * for debugging output without external libraries. Works across all architectures.
  */
 
 #ifndef DMOD_PRINTF_H
@@ -11,39 +11,55 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-/* ITM Register Definitions */
-#define ITM_BASE            0xE0000000UL
-#define ITM_STIM0           (*(volatile uint32_t *)(ITM_BASE + 0x00))
-#define ITM_TER             (*(volatile uint32_t *)(ITM_BASE + 0xE00))
-#define ITM_TCR             (*(volatile uint32_t *)(ITM_BASE + 0xE80))
+/* Configuration - can be overridden by Makefile */
+#ifndef DMOD_LOG_ENTRIES
+#define DMOD_LOG_ENTRIES    128
+#endif
 
-/* ITM Port 0 is used for standard output */
-#define ITM_PORT_PRINTF     0
+#ifndef DMOD_LOG_BUFFER_SIZE
+#define DMOD_LOG_BUFFER_SIZE    256
+#endif
 
 /**
- * @brief Initialize ITM for debug output
+ * @brief Log entry structure in the ring buffer
  * 
- * This function enables ITM stimulus port 0 for printf output.
+ * Each entry contains:
+ * - id: Unique incrementing ID to detect new entries
+ * - length: Actual length of the message
+ * - buffer: Message data
+ */
+typedef struct {
+    volatile uint32_t id;
+    volatile uint32_t length;
+    volatile char buffer[DMOD_LOG_BUFFER_SIZE];
+} dmod_log_entry_t;
+
+/**
+ * @brief Ring buffer control structure
+ * 
+ * Contains:
+ * - latest_id: Most recent log entry ID (for easy monitoring)
+ * - write_index: Current write position in the ring
+ * - entries: Array of log entries
+ */
+typedef struct {
+    volatile uint32_t latest_id;
+    volatile uint32_t write_index;
+    dmod_log_entry_t entries[DMOD_LOG_ENTRIES];
+} dmod_log_ring_t;
+
+/* External ring buffer defined in linker script */
+extern dmod_log_ring_t dmod_log_ring;
+
+/**
+ * @brief Initialize the log ring buffer
+ * 
  * Must be called before using Dmod_Printf.
  */
-void Dmod_ITM_Init(void);
+void Dmod_Log_Init(void);
 
 /**
- * @brief Send a character via ITM
- * 
- * @param ch Character to send
- */
-void Dmod_ITM_SendChar(char ch);
-
-/**
- * @brief Send a string via ITM
- * 
- * @param str Null-terminated string to send
- */
-void Dmod_ITM_SendString(const char *str);
-
-/**
- * @brief Printf implementation using ITM
+ * @brief Printf implementation using memory ring buffer
  * 
  * Supports basic format specifiers:
  * - %d, %i: signed decimal integer

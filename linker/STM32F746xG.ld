@@ -121,6 +121,16 @@ SECTIONS
     __bss_end__ = _ebss;
   } >RAM
 
+  /* Log ring buffer - placed in special section for debugging */
+  .dmod_log_ring (NOLOAD) :
+  {
+    . = ALIGN(4);
+    _dmod_log_ring_start = .;
+    KEEP(*(.dmod_log_ring))
+    . = ALIGN(4);
+    _dmod_log_ring_end = .;
+  } >RAM
+
   /* User_heap_stack section, used to check that there is enough RAM left */
   ._user_heap_stack :
   {

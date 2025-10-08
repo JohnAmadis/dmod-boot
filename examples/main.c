@@ -1,7 +1,7 @@
 /*
  * main.c - Example application for dmod-boot
  * 
- * Simple example demonstrating ITM-based debug output
+ * Simple example demonstrating ring buffer based debug output
  */
 
 #include "dmod_printf.h"
@@ -16,13 +16,13 @@ int main(void)
 {
     uint32_t counter = 0;
     
-    /* Initialize ITM for debug output */
-    Dmod_ITM_Init();
+    /* Initialize log ring buffer */
+    Dmod_Log_Init();
     
     /* Print startup message */
     Dmod_Printf("dmod-boot initialized\n");
     Dmod_Printf("System starting...\n");
-    Dmod_Printf("ITM debug output enabled\n\n");
+    Dmod_Printf("Ring buffer debug output enabled\n\n");
     
     /* Main loop */
     while (1) {

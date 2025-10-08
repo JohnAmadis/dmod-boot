@@ -4,11 +4,16 @@
 # Target selection (STM32F746 or STM32F407)
 TARGET ?= STM32F746
 
+# Log ring buffer configuration
+DMOD_LOG_ENTRIES ?= 128
+DMOD_LOG_BUFFER_SIZE ?= 256
+
 # Toolchain
 CC = arm-none-eabi-gcc
 OBJCOPY = arm-none-eabi-objcopy
 SIZE = arm-none-eabi-size
 OBJDUMP = arm-none-eabi-objdump
+NM = arm-none-eabi-nm
 
 # Directories
 SRC_DIR = src
@@ -16,6 +21,7 @@ INC_DIR = include
 LINKER_DIR = linker
 EXAMPLES_DIR = examples
 BUILD_DIR = build
+SCRIPTS_DIR = scripts
 
 # Target-specific settings
 ifeq ($(TARGET),STM32F746)
@@ -41,6 +47,8 @@ CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -O2 -g
 CFLAGS += -I$(INC_DIR)
 CFLAGS += -DSTM32 -D$(TARGET)
+CFLAGS += -DDMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)
+CFLAGS += -DDMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)
 
 # Linker flags
 LDFLAGS = -mcpu=$(CPU) -mthumb $(FPU) $(FLOAT_ABI)
@@ -62,10 +70,11 @@ OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o)
 ELF = $(BUILD_DIR)/$(TARGET).elf
 BIN = $(BUILD_DIR)/$(TARGET).bin
 HEX = $(BUILD_DIR)/$(TARGET).hex
+ADDR_FILE = $(BUILD_DIR)/$(TARGET)_dmod_addresses.txt
 
 # Default target
 .PHONY: all
-all: $(BIN) $(HEX)
+all: $(BIN) $(HEX) $(ADDR_FILE)
 	@echo "Build complete for $(TARGET)"
 	@$(SIZE) $(ELF)
 
@@ -94,6 +103,20 @@ $(BIN): $(ELF)
 $(HEX): $(ELF)
 	@echo "Creating hex $@"
 	@$(OBJCOPY) -O ihex $< $@
+
+# Extract addresses for debugging
+$(ADDR_FILE): $(ELF)
+	@echo "Extracting symbol addresses to $@"
+	@echo "# dmod-boot Symbol Addresses for $(TARGET)" > $@
+	@echo "# Generated: $$(date)" >> $@
+	@echo "" >> $@
+	@echo "DMOD_LOG_RING_ADDR=$$($(NM) $< | grep ' dmod_log_ring$$' | cut -d' ' -f1)" >> $@
+	@echo "DMOD_LOG_RING_START=$$($(NM) $< | grep _dmod_log_ring_start | cut -d' ' -f1)" >> $@
+	@echo "DMOD_LOG_RING_END=$$($(NM) $< | grep _dmod_log_ring_end | cut -d' ' -f1)" >> $@
+	@echo "DMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)" >> $@
+	@echo "DMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)" >> $@
+	@echo "" >> $@
+	@echo "Addresses saved to $@"
 
 # Clean build artifacts
 .PHONY: clean
@@ -133,6 +156,10 @@ help:
 	@echo "  make clean              - Remove build artifacts"
 	@echo "  make disasm             - Generate disassembly"
 	@echo "  make help               - Show this help message"
+	@echo ""
+	@echo "Configuration:"
+	@echo "  DMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)       - Number of log entries in ring buffer"
+	@echo "  DMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)   - Size of each log entry buffer"
 	@echo ""
 	@echo "Targets:"
 	@echo "  STM32F746 - STM32F746 (Cortex-M7, 1MB Flash, 320KB RAM)"
