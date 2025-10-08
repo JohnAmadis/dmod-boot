@@ -133,22 +133,22 @@ class OpenOCDClient:
 
 
 class DmodLogMonitor:
-    def __init__(self, client, ring_addr, ring_control_size, entry_size, buffer_size, entries, expected_magic):
+    def __init__(self, client, ring_addr, ring_control_size, total_size, max_entry_size, expected_magic):
         self.client = client
         self.ring_addr = ring_addr
         self.ring_control_size = ring_control_size
-        self.entry_size = entry_size
-        self.buffer_size = buffer_size
-        self.entries = entries
+        self.total_size = total_size
+        self.max_entry_size = max_entry_size
         self.expected_magic = expected_magic
-
+        self.last_id = 0
+        
     def read_ring_control(self):
         """Read ring buffer control structure"""
         data = self.client.read_memory(self.ring_addr, self.ring_control_size)
         if not data or len(data) < self.ring_control_size:
-            return None, None
+            return None
             
-        magic, latest_id, write_index = struct.unpack('<III', data)
+        magic, latest_id, flags, head_offset, tail_offset = struct.unpack('<IIIII', data)
         
         # Check magic number
         if magic != self.expected_magic:
@@ -156,66 +156,126 @@ class DmodLogMonitor:
             time.sleep(0.001)
             data = self.client.read_memory(self.ring_addr, self.ring_control_size)
             if not data or len(data) < self.ring_control_size:
-                return None, None
-            magic, latest_id, write_index = struct.unpack('<III', data)
+                return None
+            magic, latest_id, flags, head_offset, tail_offset = struct.unpack('<IIIII', data)
             
             if magic != self.expected_magic:
-                return None, None
+                return None
         
         # Validate the values
-        if (latest_id < 0xFFFFFF00 and write_index < self.entries):
-            return latest_id, write_index
+        if latest_id < 0xFFFFFF00 and head_offset < self.total_size and tail_offset < self.total_size:
+            return {
+                'latest_id': latest_id,
+                'flags': flags,
+                'head_offset': head_offset,
+                'tail_offset': tail_offset
+            }
         
-        return None, None
+        return None
     
-    def read_entry(self, index):
-        """Read a single log entry"""
-        entry_addr = self.ring_addr + self.ring_control_size + (index * self.entry_size)
-        data = self.client.read_memory(entry_addr, self.entry_size)
+    def read_entry_at_offset(self, offset):
+        """Read a single log entry at given offset in the buffer"""
+        # Read entry header (6 bytes: id(4) + length(2))
+        header_size = 6
+        buffer_start = self.ring_addr + self.ring_control_size
+        entry_addr = buffer_start + offset
         
-        logger.debug(f"Reading entry {index} from addr 0x{entry_addr:08x}, got {len(data) if data else 0} bytes")
+        # Read header
+        header_data = self.client.read_memory(entry_addr, header_size)
         
-        if not data or len(data) < self.entry_size:
+        if not header_data or len(header_data) < header_size:
             return None
         
-        entry_id, length = struct.unpack('<II', data[:8])
-        logger.debug(f"Entry {index}: id={entry_id}, length={length}")
+        entry_id, length = struct.unpack('<IH', header_data)
+        logger.debug(f"Reading entry at offset {offset}: id={entry_id}, length={length}")
         
-        if length > self.buffer_size:
-            logger.debug(f"Entry {index}: length {length} too big (max {self.buffer_size})")
+        if length > self.max_entry_size:
+            logger.debug(f"Entry at offset {offset}: length {length} too big (max {self.max_entry_size})")
             return None
         
-        buffer_data = data[8:8+length]
+        # Read message data
+        # Handle wraparound if needed
+        data_offset = (offset + header_size) % self.total_size
+        data_addr = buffer_start + data_offset
+        
+        # Check if data wraps around
+        if data_offset + length <= self.total_size:
+            # No wraparound
+            message_data = self.client.read_memory(data_addr, length)
+        else:
+            # Wraparound: read in two parts
+            first_part_len = self.total_size - data_offset
+            second_part_len = length - first_part_len
+            
+            first_part = self.client.read_memory(data_addr, first_part_len)
+            second_part = self.client.read_memory(buffer_start, second_part_len)
+            
+            if not first_part or not second_part:
+                return None
+            message_data = first_part + second_part
+        
+        if not message_data or len(message_data) < length:
+            return None
         
         return {
             'id': entry_id,
             'length': length,
-            'message': buffer_data.decode('utf-8', errors='replace')
+            'message': message_data.decode('utf-8', errors='replace'),
+            'next_offset': (offset + header_size + length) % self.total_size
         }
+    
+    def read_entries_from_tail(self, tail_offset, head_offset, start_id):
+        """Read all entries from tail to head"""
+        entries = []
+        current_offset = tail_offset
+        
+        # Safety counter to prevent infinite loops
+        max_iterations = 1000
+        iterations = 0
+        
+        while current_offset != head_offset and iterations < max_iterations:
+            iterations += 1
+            entry = self.read_entry_at_offset(current_offset)
+            
+            if not entry:
+                logger.debug(f"Failed to read entry at offset {current_offset}")
+                break
+            
+            if entry['id'] >= start_id:
+                entries.append(entry)
+            
+            current_offset = entry['next_offset']
+            
+            # Safety check: if we've wrapped around past head, stop
+            if iterations > 1 and current_offset == tail_offset:
+                break
+        
+        return entries
 
     def monitor(self, interval=0.1):
         """Monitor log ring buffer continuously"""
         print(f"Monitoring dmod-boot log ring buffer at 0x{self.ring_addr:08x}")
-        print(f"Ring size: {self.entries} entries, buffer size: {self.buffer_size} bytes")
+        print(f"Buffer size: {self.total_size} bytes, max entry: {self.max_entry_size} bytes")
         print("Press Ctrl+C to stop\n")
         
         # Initialize - start from current position to avoid reading old entries
-        latest_id, write_index = self.read_ring_control()
-        if latest_id is None:
+        control = self.read_ring_control()
+        if control is None:
             print("Failed to read ring buffer control")
             return
         
-        self.last_id = latest_id
-        last_write_index = write_index
-        print(f"Starting from log ID: {latest_id}, write index: {write_index}")
+        self.last_id = control['latest_id']
+        print(f"Starting from log ID: {self.last_id}, head: {control['head_offset']}, tail: {control['tail_offset']}")
         
         try:
             while True:
-                latest_id, write_index = self.read_ring_control()
+                control = self.read_ring_control()
                 
-                if latest_id is None:
+                if control is None:
                     time.sleep(interval)
                     continue
+                
+                latest_id = control['latest_id']
                 
                 # Debug: print current state
                 if latest_id != self.last_id:
@@ -223,39 +283,17 @@ class DmodLogMonitor:
                 
                 # Check if there are new entries
                 if latest_id > self.last_id:
-                    num_new_entries = latest_id - self.last_id
-                    logger.debug(f"Found {num_new_entries} new entries")
+                    logger.debug(f"Found new entries, reading from tail {control['tail_offset']} to head {control['head_offset']}")
                     
-                    # Calculate starting position for reading new entries
-                    # If we have more new entries than ring size, start from oldest available
-                    if num_new_entries >= self.entries:
-                        # Ring buffer wrapped, start from current write_index (oldest entry)
-                        start_index = write_index
-                        entries_to_read = self.entries
-                        start_id = latest_id - self.entries + 1
-                        logger.debug(f"Ring wrapped, reading {entries_to_read} entries from index {start_index}")
-                    else:
-                        # Calculate where the new entries start
-                        # Work backwards from write_index
-                        start_index = (write_index - num_new_entries) % self.entries
-                        entries_to_read = num_new_entries
-                        start_id = self.last_id + 1
-                        logger.debug(f"Reading {entries_to_read} entries from index {start_index}")
+                    # Read all entries from tail to head, filtering by ID
+                    start_id = self.last_id + 1
+                    entries = self.read_entries_from_tail(control['tail_offset'], control['head_offset'], start_id)
                     
-                    # Read entries sequentially from start_index
-                    for i in range(entries_to_read):
-                        entry_index = (start_index + i) % self.entries
-                        entry = self.read_entry(entry_index)
-                        
-                        if entry and entry['id'] >= start_id:
-                            print(entry['message'], end='')
-                        elif entry:
-                            logger.debug(f"Skipping entry {entry['id']} (too old, need >= {start_id})")
-                        else:
-                            logger.debug(f"Failed to read entry at index {entry_index}")
+                    # Print entries in order
+                    for entry in entries:
+                        print(entry['message'], end='')
                     
                     self.last_id = latest_id
-                    last_write_index = write_index
                 
                 time.sleep(interval)
                 
@@ -329,15 +367,15 @@ def main():
     # Parse addresses
     try:
         ring_addr = int(addresses['DMOD_LOG_RING_ADDR'], 16)
-        entries = int(addresses['DMOD_LOG_ENTRIES'])
-        buffer_size = int(addresses['DMOD_LOG_BUFFER_SIZE'])
+        total_size = int(addresses['DMOD_LOG_TOTAL_SIZE'])
+        max_entry_size = int(addresses['DMOD_LOG_MAX_ENTRY_SIZE'])
     except (KeyError, ValueError) as e:
         print(f"Error parsing addresses: {e}")
         return 1
     
     print(f"Ring buffer address: 0x{ring_addr:08x}")
-    print(f"Entries: {entries}")
-    print(f"Buffer size: {buffer_size}")
+    print(f"Total buffer size: {total_size} bytes")
+    print(f"Max entry size: {max_entry_size} bytes")
     print()
     
     # Connect to OpenOCD
@@ -352,13 +390,12 @@ def main():
     print("Connected to OpenOCD\n")
     
     # Calculate sizes and create monitor
-    entry_size = 8 + buffer_size  # id (4) + length (4) + buffer
-    ring_control_size = 12  # magic (4) + latest_id (4) + write_index (4)
+    ring_control_size = 20  # magic (4) + latest_id (4) + flags (4) + head_offset (4) + tail_offset (4)
     expected_magic = 0x444D4F44  # 'DMOD'
     
     monitor = DmodLogMonitor(
-        client, ring_addr, ring_control_size, entry_size, 
-        buffer_size, entries, expected_magic
+        client, ring_addr, ring_control_size, total_size, 
+        max_entry_size, expected_magic
     )
     
     try:

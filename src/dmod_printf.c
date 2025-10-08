@@ -18,9 +18,11 @@ static void print_uint(uint32_t value);
 static void print_hex(uint32_t value, int uppercase);
 static int strlen_local(const char *str);
 static void flush_buffer(void);
+static uint32_t get_free_space(uint32_t head, uint32_t tail);
+static void write_entry(const char *data, uint32_t length);
 
 /* Current buffer being built */
-static char current_buffer[DMOD_LOG_BUFFER_SIZE];
+static char current_buffer[DMOD_LOG_MAX_ENTRY_SIZE];
 static uint32_t current_length = 0;
 static uint32_t next_id = 1;
 
@@ -31,12 +33,33 @@ void Dmod_Log_Init(void)
     /* Initialize ring buffer control */
     dmod_log_ring.magic = DMOD_MAGIC_NUMBER;
     dmod_log_ring.latest_id = 0;
-    dmod_log_ring.write_index = 0;
+    dmod_log_ring.flags = 0;
+    dmod_log_ring.head_offset = 0;
+    dmod_log_ring.tail_offset = 0;
     
-    /* Clear all entries */
-    for (i = 0; i < DMOD_LOG_ENTRIES; i++) {
-        dmod_log_ring.entries[i].id = 0;
-        dmod_log_ring.entries[i].length = 0;
+    /* Clear buffer */
+    for (i = 0; i < DMOD_LOG_TOTAL_SIZE; i++) {
+        dmod_log_ring.buffer[i] = 0;
+    }
+    
+    /* Reset local state */
+    current_length = 0;
+    next_id = 1;
+}
+
+void Dmod_Log_Clear(void)
+{
+    uint32_t i;
+    
+    /* Reset control fields */
+    dmod_log_ring.latest_id = 0;
+    dmod_log_ring.head_offset = 0;
+    dmod_log_ring.tail_offset = 0;
+    dmod_log_ring.flags = 0;
+    
+    /* Clear buffer */
+    for (i = 0; i < DMOD_LOG_TOTAL_SIZE; i++) {
+        dmod_log_ring.buffer[i] = 0;
     }
     
     /* Reset local state */
@@ -46,41 +69,94 @@ void Dmod_Log_Init(void)
 
 static void print_to_buffer(char ch)
 {
-    if (current_length < DMOD_LOG_BUFFER_SIZE - 1) {
+    if (current_length < DMOD_LOG_MAX_ENTRY_SIZE - 1) {
         current_buffer[current_length++] = ch;
     }
 }
 
-static void flush_buffer(void)
+static uint32_t get_free_space(uint32_t head, uint32_t tail)
+{
+    if (head >= tail) {
+        return DMOD_LOG_TOTAL_SIZE - (head - tail);
+    } else {
+        return tail - head;
+    }
+}
+
+static void write_entry(const char *data, uint32_t length)
 {
     uint32_t i;
-    uint32_t write_idx;
+    uint32_t head = dmod_log_ring.head_offset;
+    uint32_t tail = dmod_log_ring.tail_offset;
+    uint32_t entry_total_size = sizeof(dmod_log_entry_header_t) + length;
+    dmod_log_entry_header_t header;
     
+    /* Check for clear buffer command */
+    if (dmod_log_ring.flags & DMOD_FLAG_CLEAR_BUFFER) {
+        Dmod_Log_Clear();
+        head = 0;
+        tail = 0;
+    }
+    
+    /* If entry is too large, truncate it */
+    if (length > DMOD_LOG_MAX_ENTRY_SIZE) {
+        length = DMOD_LOG_MAX_ENTRY_SIZE;
+        entry_total_size = sizeof(dmod_log_entry_header_t) + length;
+    }
+    
+    /* Make space if needed by advancing tail (removing old entries) */
+    while (get_free_space(head, tail) < entry_total_size + 1) {
+        /* Read the entry at tail to get its size */
+        dmod_log_entry_header_t old_header;
+        uint32_t offset = 0;
+        
+        /* Read old entry header */
+        for (i = 0; i < sizeof(dmod_log_entry_header_t); i++) {
+            ((uint8_t*)&old_header)[i] = dmod_log_ring.buffer[(tail + i) % DMOD_LOG_TOTAL_SIZE];
+        }
+        
+        /* Advance tail past this entry */
+        tail = (tail + sizeof(dmod_log_entry_header_t) + old_header.length) % DMOD_LOG_TOTAL_SIZE;
+        
+        /* Safety check - if tail catches head or buffer seems corrupted, reset */
+        if (tail == head || old_header.length > DMOD_LOG_MAX_ENTRY_SIZE) {
+            tail = 0;
+            head = 0;
+            break;
+        }
+    }
+    
+    /* Prepare header */
+    header.id = next_id;
+    header.length = (uint16_t)length;
+    
+    /* Write header to buffer */
+    for (i = 0; i < sizeof(dmod_log_entry_header_t); i++) {
+        dmod_log_ring.buffer[(head + i) % DMOD_LOG_TOTAL_SIZE] = ((uint8_t*)&header)[i];
+    }
+    head = (head + sizeof(dmod_log_entry_header_t)) % DMOD_LOG_TOTAL_SIZE;
+    
+    /* Write data to buffer */
+    for (i = 0; i < length; i++) {
+        dmod_log_ring.buffer[(head + i) % DMOD_LOG_TOTAL_SIZE] = data[i];
+    }
+    head = (head + length) % DMOD_LOG_TOTAL_SIZE;
+    
+    /* Update control structure */
+    dmod_log_ring.head_offset = head;
+    dmod_log_ring.tail_offset = tail;
+    dmod_log_ring.latest_id = next_id;
+    next_id++;
+}
+
+static void flush_buffer(void)
+{
     if (current_length == 0) {
         return;
     }
     
-    /* Get current write index */
-    write_idx = dmod_log_ring.write_index;
-    
-    /* Copy data to ring buffer entry */
-    dmod_log_ring.entries[write_idx].length = current_length;
-    for (i = 0; i < current_length; i++) {
-        dmod_log_ring.entries[write_idx].buffer[i] = current_buffer[i];
-    }
-    
-    /* Null-terminate for convenience */
-    if (current_length < DMOD_LOG_BUFFER_SIZE) {
-        dmod_log_ring.entries[write_idx].buffer[current_length] = '\0';
-    }
-    
-    /* Assign ID and update latest_id */
-    dmod_log_ring.entries[write_idx].id = next_id;
-    dmod_log_ring.latest_id = next_id;
-    next_id++;
-    
-    /* Move to next entry (wrap around) */
-    dmod_log_ring.write_index = (write_idx + 1) % DMOD_LOG_ENTRIES;
+    /* Write entry to ring buffer */
+    write_entry(current_buffer, current_length);
     
     /* Reset current buffer */
     current_length = 0;

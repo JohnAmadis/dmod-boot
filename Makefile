@@ -5,8 +5,8 @@
 TARGET ?= STM32F746
 
 # Log ring buffer configuration
-DMOD_LOG_ENTRIES ?= 128
-DMOD_LOG_BUFFER_SIZE ?= 256
+DMOD_LOG_TOTAL_SIZE ?= 8192
+DMOD_LOG_MAX_ENTRY_SIZE ?= 512
 
 # Toolchain
 CC = arm-none-eabi-gcc
@@ -53,8 +53,8 @@ CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -O2 -g
 CFLAGS += -I$(INC_DIR)
 CFLAGS += -DSTM32 -D$(TARGET)
-CFLAGS += -DDMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)
-CFLAGS += -DDMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)
+CFLAGS += -DDMOD_LOG_TOTAL_SIZE=$(DMOD_LOG_TOTAL_SIZE)
+CFLAGS += -DDMOD_LOG_MAX_ENTRY_SIZE=$(DMOD_LOG_MAX_ENTRY_SIZE)
 
 # Linker flags
 LDFLAGS = -mcpu=$(CPU) -mthumb $(FPU) $(FLOAT_ABI)
@@ -119,8 +119,8 @@ $(ADDR_FILE): $(ELF)
 	@echo "DMOD_LOG_RING_ADDR=$$($(NM) $< | grep ' dmod_log_ring$$' | cut -d' ' -f1)" >> $@
 	@echo "DMOD_LOG_RING_START=$$($(NM) $< | grep _dmod_log_ring_start | cut -d' ' -f1)" >> $@
 	@echo "DMOD_LOG_RING_END=$$($(NM) $< | grep _dmod_log_ring_end | cut -d' ' -f1)" >> $@
-	@echo "DMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)" >> $@
-	@echo "DMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)" >> $@
+	@echo "DMOD_LOG_TOTAL_SIZE=$(DMOD_LOG_TOTAL_SIZE)" >> $@
+	@echo "DMOD_LOG_MAX_ENTRY_SIZE=$(DMOD_LOG_MAX_ENTRY_SIZE)" >> $@
 	@echo "" >> $@
 	@echo "Addresses saved to $@"
 
@@ -188,8 +188,8 @@ help:
 	@echo "  make help               - Show this help message"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  DMOD_LOG_ENTRIES=$(DMOD_LOG_ENTRIES)       - Number of log entries in ring buffer"
-	@echo "  DMOD_LOG_BUFFER_SIZE=$(DMOD_LOG_BUFFER_SIZE)   - Size of each log entry buffer"
+	@echo "  DMOD_LOG_TOTAL_SIZE=$(DMOD_LOG_TOTAL_SIZE)       - Total size of log buffer in bytes"
+	@echo "  DMOD_LOG_MAX_ENTRY_SIZE=$(DMOD_LOG_MAX_ENTRY_SIZE) - Maximum size of a single log entry"
 	@echo ""
 	@echo "Targets:"
 	@echo "  STM32F746 - STM32F746 (Cortex-M7, 1MB Flash, 320KB RAM)"
