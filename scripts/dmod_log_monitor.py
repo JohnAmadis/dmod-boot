@@ -14,6 +14,7 @@ Options:
     --port PORT         OpenOCD telnet port, default: 4444
     --interval SECONDS  Polling interval in seconds, default: 0.1
     --addr-file FILE    Address file path, default: build/TARGET_dmod_addresses.txt
+    --debug             Enable debug logging
 """
 
 import socket
@@ -21,17 +22,18 @@ import time
 import sys
 import argparse
 import struct
+import logging
 from pathlib import Path
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class OpenOCDClient:
-    """Simple OpenOCD TCL client"""
-    
-    def __init__(self, host='localhost', port=4444):  # Changed default port to 4444
+    def __init__(self, host='localhost', port=4444):
         self.host = host
         self.port = port
         self.sock = None
-    
+
     def connect(self):
         """Connect to OpenOCD telnet server"""
         try:
@@ -42,7 +44,7 @@ class OpenOCDClient:
                 self.sock.recv(4096)
             return True
         except Exception as e:
-            print(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
+            logger.error(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
             return False
     
     def send_command(self, cmd):
@@ -77,7 +79,7 @@ class OpenOCDClient:
             
             return response.decode('utf-8', errors='ignore').strip()
         except Exception as e:
-            print(f"Error sending command: {e}")
+            logger.error(f"Error sending command: {e}")
             return None
     
     def read_memory(self, address, size):
@@ -85,7 +87,7 @@ class OpenOCDClient:
         cmd = f"mdw 0x{address:08x} {size//4}"
         response = self.send_command(cmd)
         if not response:
-            print(f"No response from OpenOCD for command: {cmd}")
+            logger.debug(f"No response from OpenOCD for command: {cmd}")
             return None
         
         # Parse response - format: "0xADDRESS: VALUE VALUE ..."
@@ -122,7 +124,7 @@ class OpenOCDClient:
             data += struct.pack('<I', word)
         
         return data[:size] if len(data) >= size else None
-    
+
     def close(self):
         """Close connection"""
         if self.sock:
@@ -131,48 +133,39 @@ class OpenOCDClient:
 
 
 class DmodLogMonitor:
-    """Monitor dmod-boot log ring buffer"""
-    
-    def __init__(self, client, ring_addr, entries, buffer_size):
+    def __init__(self, client, ring_addr, ring_control_size, entry_size, buffer_size, entries, expected_magic):
         self.client = client
         self.ring_addr = ring_addr
-        self.entries = entries
+        self.ring_control_size = ring_control_size
+        self.entry_size = entry_size
         self.buffer_size = buffer_size
-        self.last_id = 0
-        
-        # Calculate sizes
-        self.entry_size = 8 + buffer_size  # id (4) + length (4) + buffer
-        self.ring_control_size = 12  # magic (4) + latest_id (4) + write_index (4)
-        self.expected_magic = 0x444D4F44  # 'DMOD'
-    
+        self.entries = entries
+        self.expected_magic = expected_magic
+
     def read_ring_control(self):
         """Read ring buffer control structure"""
-        for attempt in range(3):  # Only 3 attempts as requested
-            data = self.client.read_memory(self.ring_addr, self.ring_control_size)
-            if data and len(data) >= self.ring_control_size:
-                magic, latest_id, write_index = struct.unpack('<III', data)
-                
-                # First validate magic number
-                if magic != self.expected_magic:
-                    print(f"Attempt {attempt+1}: Invalid magic number - expected: 0x{self.expected_magic:08x}, got: 0x{magic:08x}")
-                    time.sleep(0.01)
-                    continue
-                
-                # Validate the values - they should be reasonable
-                if (latest_id < 0xFFFFFF00 and  # Not a crazy high value (likely corrupted)
-                    write_index < self.entries):  # Write index should be within ring bounds
-                    return latest_id, write_index
-                else:
-                    # Debug: print suspicious values
-                    print(f"Attempt {attempt+1}: Suspicious values - latest_id: 0x{latest_id:08x}, write_index: {write_index}")
-            else:
-                print(f"Attempt {attempt+1}: Failed to read data or insufficient data length")
+        data = self.client.read_memory(self.ring_addr, self.ring_control_size)
+        if not data or len(data) < self.ring_control_size:
+            return None, None
             
-            # Short delay between retries
-            time.sleep(0.01)
+        magic, latest_id, write_index = struct.unpack('<III', data)
         
-        # All attempts failed
-        print("Failed to read valid ring control after 3 attempts")
+        # Check magic number
+        if magic != self.expected_magic:
+            # Try one more time
+            time.sleep(0.001)
+            data = self.client.read_memory(self.ring_addr, self.ring_control_size)
+            if not data or len(data) < self.ring_control_size:
+                return None, None
+            magic, latest_id, write_index = struct.unpack('<III', data)
+            
+            if magic != self.expected_magic:
+                return None, None
+        
+        # Validate the values
+        if (latest_id < 0xFFFFFF00 and write_index < self.entries):
+            return latest_id, write_index
+        
         return None, None
     
     def read_entry(self, index):
@@ -180,11 +173,16 @@ class DmodLogMonitor:
         entry_addr = self.ring_addr + self.ring_control_size + (index * self.entry_size)
         data = self.client.read_memory(entry_addr, self.entry_size)
         
+        logger.debug(f"Reading entry {index} from addr 0x{entry_addr:08x}, got {len(data) if data else 0} bytes")
+        
         if not data or len(data) < self.entry_size:
             return None
         
         entry_id, length = struct.unpack('<II', data[:8])
+        logger.debug(f"Entry {index}: id={entry_id}, length={length}")
+        
         if length > self.buffer_size:
+            logger.debug(f"Entry {index}: length {length} too big (max {self.buffer_size})")
             return None
         
         buffer_data = data[8:8+length]
@@ -194,7 +192,7 @@ class DmodLogMonitor:
             'length': length,
             'message': buffer_data.decode('utf-8', errors='replace')
         }
-    
+
     def monitor(self, interval=0.1):
         """Monitor log ring buffer continuously"""
         print(f"Monitoring dmod-boot log ring buffer at 0x{self.ring_addr:08x}")
@@ -202,12 +200,7 @@ class DmodLogMonitor:
         print("Press Ctrl+C to stop\n")
         
         # Initialize - start from current position to avoid reading old entries
-        # 3 tries to read the control structure to ensure we have valid data
-        for _ in range(3):
-            latest_id, write_index = self.read_ring_control()
-            if latest_id is not None:
-                break
-            time.sleep(0.1)
+        latest_id, write_index = self.read_ring_control()
         if latest_id is None:
             print("Failed to read ring buffer control")
             return
@@ -224,9 +217,14 @@ class DmodLogMonitor:
                     time.sleep(interval)
                     continue
                 
+                # Debug: print current state
+                if latest_id != self.last_id:
+                    logger.debug(f"latest_id changed from {self.last_id} to {latest_id}")
+                
                 # Check if there are new entries
                 if latest_id > self.last_id:
                     num_new_entries = latest_id - self.last_id
+                    logger.debug(f"Found {num_new_entries} new entries")
                     
                     # Calculate starting position for reading new entries
                     # If we have more new entries than ring size, start from oldest available
@@ -235,12 +233,14 @@ class DmodLogMonitor:
                         start_index = write_index
                         entries_to_read = self.entries
                         start_id = latest_id - self.entries + 1
+                        logger.debug(f"Ring wrapped, reading {entries_to_read} entries from index {start_index}")
                     else:
                         # Calculate where the new entries start
                         # Work backwards from write_index
                         start_index = (write_index - num_new_entries) % self.entries
                         entries_to_read = num_new_entries
                         start_id = self.last_id + 1
+                        logger.debug(f"Reading {entries_to_read} entries from index {start_index}")
                     
                     # Read entries sequentially from start_index
                     for i in range(entries_to_read):
@@ -249,6 +249,10 @@ class DmodLogMonitor:
                         
                         if entry and entry['id'] >= start_id:
                             print(entry['message'], end='')
+                        elif entry:
+                            logger.debug(f"Skipping entry {entry['id']} (too old, need >= {start_id})")
+                        else:
+                            logger.debug(f"Failed to read entry at index {entry_index}")
                     
                     self.last_id = latest_id
                     last_write_index = write_index
@@ -290,8 +294,22 @@ def main():
                         help='Polling interval in seconds (default: 0.1)')
     parser.add_argument('--addr-file', default=None,
                         help='Address file path (default: build/TARGET_dmod_addresses.txt)')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug logging')
     
     args = parser.parse_args()
+    
+    # Configure logging based on debug flag
+    if args.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+    else:
+        logging.basicConfig(
+            level=logging.ERROR,
+            format='%(levelname)s: %(message)s'
+        )
     
     # Determine address file path
     if args.addr_file:
@@ -333,8 +351,15 @@ def main():
     
     print("Connected to OpenOCD\n")
     
-    # Create monitor and start monitoring
-    monitor = DmodLogMonitor(client, ring_addr, entries, buffer_size)
+    # Calculate sizes and create monitor
+    entry_size = 8 + buffer_size  # id (4) + length (4) + buffer
+    ring_control_size = 12  # magic (4) + latest_id (4) + write_index (4)
+    expected_magic = 0x444D4F44  # 'DMOD'
+    
+    monitor = DmodLogMonitor(
+        client, ring_addr, ring_control_size, entry_size, 
+        buffer_size, entries, expected_magic
+    )
     
     try:
         monitor.monitor(args.interval)
