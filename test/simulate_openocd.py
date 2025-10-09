@@ -60,7 +60,7 @@ class SimulatedMemory:
         head = self.get_u32(12)
         tail = self.get_u32(16)
         
-        entry_size = 6 + length  # header + data
+        entry_size = 10 + length  # header (magic(4) + id(4) + length(2)) + data
         
         # Simple eviction: if not enough space, just wrap around
         # (simplified version - real one is more complex)
@@ -69,14 +69,15 @@ class SimulatedMemory:
             head = 0
             tail = 0
         
-        # Write entry header
+        # Write entry header with magic number
         entry_offset = self.control_size + head
-        self.set_u32(entry_offset, self.next_id)  # id
-        self.set_u16(entry_offset + 4, length)     # length
+        self.set_u32(entry_offset, 0x454E5452)  # magic 'ENTR'
+        self.set_u32(entry_offset + 4, self.next_id)  # id
+        self.set_u16(entry_offset + 8, length)     # length
         
         # Write data
         for i, byte in enumerate(data):
-            self.memory[entry_offset + 6 + i] = byte
+            self.memory[entry_offset + 10 + i] = byte
         
         # Update control structure
         self.set_u32(4, self.next_id)  # latest_id

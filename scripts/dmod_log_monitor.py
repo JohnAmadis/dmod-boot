@@ -148,97 +148,156 @@ class OpenOCDClient:
 
 
 class DmodLogMonitor:
-    def __init__(self, client, ring_addr, ring_control_size, total_size, max_entry_size, expected_magic, max_startup_entries=100):
+    def __init__(self, client, ring_addr, ring_control_size, total_size, max_entry_size, expected_magic, expected_entry_magic, max_startup_entries=100):
         self.client = client
         self.ring_addr = ring_addr
         self.ring_control_size = ring_control_size
         self.total_size = total_size
         self.max_entry_size = max_entry_size
         self.expected_magic = expected_magic
+        self.expected_entry_magic = expected_entry_magic
         self.max_startup_entries = max_startup_entries
         self.last_id = 0
         
     def read_ring_control(self):
-        """Read ring buffer control structure"""
-        data = self.client.read_memory(self.ring_addr, self.ring_control_size)
-        if not data or len(data) < self.ring_control_size:
-            return None
-            
-        magic, latest_id, flags, head_offset, tail_offset = struct.unpack('<IIIII', data)
+        """Read ring buffer control structure with retry logic"""
+        max_retries = 3
         
-        # Check magic number
-        if magic != self.expected_magic:
-            # Try one more time
-            time.sleep(0.001)
+        for attempt in range(max_retries):
             data = self.client.read_memory(self.ring_addr, self.ring_control_size)
             if not data or len(data) < self.ring_control_size:
-                return None
+                logger.debug(f"Control read attempt {attempt + 1}/{max_retries}: insufficient data")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                continue
+                
             magic, latest_id, flags, head_offset, tail_offset = struct.unpack('<IIIII', data)
             
+            # Check magic number
             if magic != self.expected_magic:
-                return None
-        
-        # Validate the values
-        if latest_id < 0xFFFFFF00 and head_offset < self.total_size and tail_offset < self.total_size:
-            return {
-                'latest_id': latest_id,
-                'flags': flags,
-                'head_offset': head_offset,
-                'tail_offset': tail_offset
-            }
+                logger.debug(f"Control read attempt {attempt + 1}/{max_retries}: magic mismatch (got 0x{magic:08X}, expected 0x{self.expected_magic:08X})")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                continue
+            
+            # Validate that values are reasonable
+            if latest_id < 0xFFFFFF00 and head_offset < self.total_size and tail_offset < self.total_size:
+                return {
+                    'magic': magic,
+                    'latest_id': latest_id,
+                    'flags': flags,
+                    'head_offset': head_offset,
+                    'tail_offset': tail_offset
+                }
+            else:
+                logger.debug(f"Control read attempt {attempt + 1}/{max_retries}: invalid values")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
         
         return None
     
     def read_entry_at_offset(self, offset):
-        """Read a single log entry at given offset in the buffer"""
-        # Read entry header (6 bytes: id(4) + length(2))
-        header_size = 6
+        """Read a single log entry at given offset in the buffer with retry logic"""
+        # Read entry header (10 bytes: magic(4) + id(4) + length(2))
+        header_size = 10
         buffer_start = self.ring_addr + self.ring_control_size
         entry_addr = buffer_start + offset
         
-        # Read header
-        header_data = self.client.read_memory(entry_addr, header_size)
+        max_retries = 3
         
-        if not header_data or len(header_data) < header_size:
-            return None
-        
-        entry_id, length = struct.unpack('<IH', header_data)
-        logger.debug(f"Reading entry at offset {offset}: id={entry_id}, length={length}")
-        
-        if length > self.max_entry_size:
-            logger.debug(f"Entry at offset {offset}: length {length} too big (max {self.max_entry_size})")
-            return None
-        
-        # Read message data
-        # Handle wraparound if needed
-        data_offset = (offset + header_size) % self.total_size
-        data_addr = buffer_start + data_offset
-        
-        # Check if data wraps around
-        if data_offset + length <= self.total_size:
-            # No wraparound
-            message_data = self.client.read_memory(data_addr, length)
-        else:
-            # Wraparound: read in two parts
-            first_part_len = self.total_size - data_offset
-            second_part_len = length - first_part_len
+        for attempt in range(max_retries):
+            # Read header
+            header_data = self.client.read_memory(entry_addr, header_size)
             
-            first_part = self.client.read_memory(data_addr, first_part_len)
-            second_part = self.client.read_memory(buffer_start, second_part_len)
+            if not header_data or len(header_data) < header_size:
+                logger.debug(f"Entry at offset {offset}, attempt {attempt + 1}/{max_retries}: insufficient header data")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                continue
             
-            if not first_part or not second_part:
+            entry_magic, entry_id, length = struct.unpack('<IIH', header_data)
+            
+            # Validate entry magic number
+            if entry_magic != self.expected_entry_magic:
+                logger.debug(f"Entry at offset {offset}, attempt {attempt + 1}/{max_retries}: magic mismatch (got 0x{entry_magic:08X}, expected 0x{self.expected_entry_magic:08X})")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                continue
+            
+            logger.debug(f"Reading entry at offset {offset}: magic=0x{entry_magic:08X}, id={entry_id}, length={length}")
+            
+            if length > self.max_entry_size:
+                logger.debug(f"Entry at offset {offset}: length {length} too big (max {self.max_entry_size})")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                    continue
                 return None
-            message_data = first_part + second_part
+            
+            # Read message data
+            # Handle wraparound if needed
+            data_offset = (offset + header_size) % self.total_size
+            data_addr = buffer_start + data_offset
+            
+            # Check if data wraps around
+            if data_offset + length <= self.total_size:
+                # No wraparound
+                message_data = self.client.read_memory(data_addr, length)
+            else:
+                # Wraparound: read in two parts
+                first_part_len = self.total_size - data_offset
+                second_part_len = length - first_part_len
+                
+                first_part = self.client.read_memory(data_addr, first_part_len)
+                second_part = self.client.read_memory(buffer_start, second_part_len)
+                
+                if not first_part or not second_part:
+                    logger.debug(f"Entry at offset {offset}, attempt {attempt + 1}/{max_retries}: failed to read message data")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.01)
+                    continue
+                message_data = first_part + second_part
+            
+            if not message_data or len(message_data) < length:
+                logger.debug(f"Entry at offset {offset}, attempt {attempt + 1}/{max_retries}: insufficient message data")
+                if attempt < max_retries - 1:
+                    time.sleep(0.01)
+                continue
+            
+            # Successfully read entry
+            return {
+                'id': entry_id,
+                'length': length,
+                'message': message_data.decode('utf-8', errors='replace'),
+                'next_offset': (offset + header_size + length) % self.total_size
+            }
         
-        if not message_data or len(message_data) < length:
-            return None
-        
-        return {
-            'id': entry_id,
-            'length': length,
-            'message': message_data.decode('utf-8', errors='replace'),
-            'next_offset': (offset + header_size + length) % self.total_size
-        }
+        # All retries failed - signal buffer clear needed
+        logger.warning(f"Failed to read entry at offset {offset} after {max_retries} attempts - requesting buffer clear")
+        self.request_buffer_clear()
+        return None
+    
+    def request_buffer_clear(self):
+        """Request buffer clear by setting the clear flag"""
+        try:
+            # Read current flags
+            control = self.read_ring_control()
+            if not control:
+                logger.error("Cannot request buffer clear - failed to read control")
+                return
+            
+            # Set clear buffer flag (bit 0)
+            new_flags = control['flags'] | 0x00000001
+            
+            # Write flags back
+            flags_addr = self.ring_addr + 8  # offset to flags field (magic(4) + latest_id(4))
+            flags_data = struct.pack('<I', new_flags)
+            
+            # Use mdw to write - need to send mww command
+            cmd = f"mww 0x{flags_addr:08x} 0x{new_flags:08x}"
+            response = self.client.send_command(cmd)
+            logger.info(f"Requested buffer clear (set flags=0x{new_flags:08X})")
+        except Exception as e:
+            logger.error(f"Failed to request buffer clear: {e}")
     
     def read_entries_from_tail(self, tail_offset, head_offset, start_id):
         """Read all entries from tail to head"""
@@ -446,10 +505,11 @@ def main():
     # Calculate sizes and create monitor
     ring_control_size = 20  # magic (4) + latest_id (4) + flags (4) + head_offset (4) + tail_offset (4)
     expected_magic = 0x444D4F44  # 'DMOD'
+    expected_entry_magic = 0x454E5452  # 'ENTR'
     
     monitor = DmodLogMonitor(
         client, ring_addr, ring_control_size, total_size, 
-        max_entry_size, expected_magic, args.max_startup_entries
+        max_entry_size, expected_magic, expected_entry_magic, args.max_startup_entries
     )
     
     try:

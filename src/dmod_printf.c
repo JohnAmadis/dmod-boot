@@ -104,6 +104,9 @@ static void write_entry(const char *data, uint32_t length)
         tail = 0;
     }
     
+    /* Set busy flag to indicate write in progress */
+    dmod_log_ring.flags |= DMOD_FLAG_BUSY;
+    
     /* If entry is too large, truncate it */
     if (length > DMOD_LOG_MAX_ENTRY_SIZE) {
         length = DMOD_LOG_MAX_ENTRY_SIZE;
@@ -133,7 +136,8 @@ static void write_entry(const char *data, uint32_t length)
         }
     }
     
-    /* Prepare header */
+    /* Prepare header with magic number */
+    header.magic = DMOD_ENTRY_MAGIC_NUMBER;
     header.id = next_id;
     header.length = (uint16_t)length;
     
@@ -154,6 +158,9 @@ static void write_entry(const char *data, uint32_t length)
     dmod_log_ring.tail_offset = tail;
     dmod_log_ring.latest_id = next_id;
     next_id++;
+    
+    /* Clear busy flag - write complete */
+    dmod_log_ring.flags &= ~DMOD_FLAG_BUSY;
 }
 
 static void flush_buffer(void)

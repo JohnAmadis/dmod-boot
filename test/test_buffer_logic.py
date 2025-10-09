@@ -23,6 +23,7 @@ class SimulatedRingBuffer:
         self.max_entry_size = max_entry_size
         self.buffer = bytearray(total_size)
         self.magic = 0x444D4F44
+        self.entry_magic = 0x454E5452
         self.latest_id = 0
         self.flags = 0
         self.head_offset = 0
@@ -45,17 +46,18 @@ class SimulatedRingBuffer:
             length = self.max_entry_size
             data = data[:length]
         
-        entry_total_size = 6 + length  # header (4+2) + data
+        entry_total_size = 10 + length  # header (4+4+2) + data
         
         # Make space if needed
         while self.get_free_space() < entry_total_size + 1:
             # Read entry at tail to get its size
             tail = self.tail_offset
-            entry_id = struct.unpack('<I', bytes(self.buffer[tail:tail+4]))[0]
-            entry_length = struct.unpack('<H', bytes(self.buffer[tail+4:tail+6]))[0]
+            entry_magic = struct.unpack('<I', bytes(self.buffer[tail:tail+4]))[0]
+            entry_id = struct.unpack('<I', bytes(self.buffer[tail+4:tail+8]))[0]
+            entry_length = struct.unpack('<H', bytes(self.buffer[tail+8:tail+10]))[0]
             
             # Advance tail past this entry
-            self.tail_offset = (tail + 6 + entry_length) % self.total_size
+            self.tail_offset = (tail + 10 + entry_length) % self.total_size
             
             # Safety check - if tail catches head or buffer seems corrupted, reset
             # Note: tail == head should only occur if buffer is corrupted, not during normal operation
@@ -65,12 +67,12 @@ class SimulatedRingBuffer:
                 self.head_offset = 0
                 break
         
-        # Write header
-        header = struct.pack('<IH', self.next_id, length)
+        # Write header with magic number
+        header = struct.pack('<IIH', self.entry_magic, self.next_id, length)
         head = self.head_offset
         for i, byte in enumerate(header):
             self.buffer[(head + i) % self.total_size] = byte
-        head = (head + 6) % self.total_size
+        head = (head + 10) % self.total_size
         
         # Write data
         for i, byte in enumerate(data):
@@ -84,22 +86,24 @@ class SimulatedRingBuffer:
     
     def read_entry_at_offset(self, offset):
         """Read entry at given offset"""
-        # Read header
-        entry_id = struct.unpack('<I', bytes(self.buffer[offset:offset+4]))[0]
-        length = struct.unpack('<H', bytes(self.buffer[offset+4:offset+6]))[0]
+        # Read header with magic number
+        entry_magic = struct.unpack('<I', bytes(self.buffer[offset:offset+4]))[0]
+        entry_id = struct.unpack('<I', bytes(self.buffer[offset+4:offset+8]))[0]
+        length = struct.unpack('<H', bytes(self.buffer[offset+8:offset+10]))[0]
         
         # Read data
-        data_offset = (offset + 6) % self.total_size
+        data_offset = (offset + 10) % self.total_size
         data = bytearray()
         
         for i in range(length):
             data.append(self.buffer[(data_offset + i) % self.total_size])
         
         return {
+            'magic': entry_magic,
             'id': entry_id,
             'length': length,
             'data': bytes(data),
-            'next_offset': (offset + 6 + length) % self.total_size
+            'next_offset': (offset + 10 + length) % self.total_size
         }
     
     def read_all_entries(self):

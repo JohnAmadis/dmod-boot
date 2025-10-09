@@ -25,19 +25,27 @@
 #define DMOD_LOG_MAX_ENTRY_SIZE    512
 #endif
 
+/* Entry magic number for validation */
+#ifndef DMOD_ENTRY_MAGIC_NUMBER
+#define DMOD_ENTRY_MAGIC_NUMBER  0x454E5452  /* 'ENTR' */
+#endif
+
 /* Flag bits for commands/status */
 #define DMOD_FLAG_CLEAR_BUFFER  0x00000001  /* Set to clear buffer, cleared after execution */
+#define DMOD_FLAG_BUSY          0x00000002  /* Buffer busy flag - set during write operations */
 
 /**
  * @brief Log entry header structure
  * 
  * Each entry in the buffer has this header followed by the message data:
- * [entry_id(4)] [length(2)] [data(length)]
+ * [magic(4)] [entry_id(4)] [length(2)] [data(length)]
  * 
+ * - magic: Magic number for validation (0x454E5452 = "ENTR")
  * - id: Unique incrementing ID to detect new entries
  * - length: Actual length of the message data (max 65535 bytes)
  */
 typedef struct {
+    volatile uint32_t magic;
     volatile uint32_t id;
     volatile uint16_t length;
 } __attribute__((packed)) dmod_log_entry_header_t;

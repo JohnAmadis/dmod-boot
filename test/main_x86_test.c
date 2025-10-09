@@ -43,9 +43,15 @@ void read_all_entries(void)
     printf("\n=== All Log Entries ===\n");
     
     while (current_offset != head_offset && count < 100) {
-        /* Read entry header */
-        uint32_t id = *(uint32_t*)&dmod_log_ring.buffer[current_offset];
-        uint16_t length = *(uint16_t*)&dmod_log_ring.buffer[current_offset + 4];
+        /* Read entry header with magic number */
+        uint32_t magic = *(uint32_t*)&dmod_log_ring.buffer[current_offset];
+        uint32_t id = *(uint32_t*)&dmod_log_ring.buffer[current_offset + 4];
+        uint16_t length = *(uint16_t*)&dmod_log_ring.buffer[current_offset + 8];
+        
+        if (magic != DMOD_ENTRY_MAGIC_NUMBER) {
+            printf(" ERROR: Entry at offset %u has invalid magic 0x%08X\n", current_offset, magic);
+            break;
+        }
         
         if (length > DMOD_LOG_MAX_ENTRY_SIZE) {
             printf("ERROR: Entry at offset %u has invalid length %u\n", current_offset, length);
@@ -55,14 +61,14 @@ void read_all_entries(void)
         printf("[%u] (offset=%u, len=%u): ", id, current_offset, length);
         
         /* Read and print message */
-        uint32_t data_offset = current_offset + 6;
+        uint32_t data_offset = current_offset + 10;  // Updated for new header size
         for (uint16_t i = 0; i < length; i++) {
             uint8_t ch = dmod_log_ring.buffer[(data_offset + i) % DMOD_LOG_TOTAL_SIZE];
             putchar(ch);
         }
         
         /* Move to next entry */
-        current_offset = (current_offset + 6 + length) % DMOD_LOG_TOTAL_SIZE;
+        current_offset = (current_offset + 10 + length) % DMOD_LOG_TOTAL_SIZE;  // Updated for new header size
         count++;
     }
     
