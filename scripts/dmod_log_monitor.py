@@ -291,7 +291,8 @@ class DmodLogMonitor:
             # Write flags back
             flags_addr = self.ring_addr + 8  # offset to flags field (magic(4) + latest_id(4))
             flags_data = struct.pack('<I', new_flags)
-            
+            self.last_id = 0
+
             # Use mdw to write - need to send mww command
             cmd = f"mww 0x{flags_addr:08x} 0x{new_flags:08x}"
             response = self.client.send_command(cmd)
