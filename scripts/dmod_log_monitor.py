@@ -134,13 +134,14 @@ class OpenOCDClient:
 
 
 class DmodLogMonitor:
-    def __init__(self, client, ring_addr, ring_control_size, total_size, max_entry_size, expected_magic):
+    def __init__(self, client, ring_addr, ring_control_size, total_size, max_entry_size, expected_magic, max_startup_entries=100):
         self.client = client
         self.ring_addr = ring_addr
         self.ring_control_size = ring_control_size
         self.total_size = total_size
         self.max_entry_size = max_entry_size
         self.expected_magic = expected_magic
+        self.max_startup_entries = max_startup_entries
         self.last_id = 0
         
     def read_ring_control(self):
@@ -234,8 +235,18 @@ class DmodLogMonitor:
         max_iterations = 1000
         iterations = 0
         
+        # Progress indicator for large reads
+        last_progress_time = 0
+        import time
+        
         while current_offset != head_offset and iterations < max_iterations:
             iterations += 1
+            
+            # Show progress for slow operations (every 50 entries or 2 seconds)
+            if iterations % 50 == 0 or (time.time() - last_progress_time) > 2:
+                logger.info(f"Reading entry {iterations}...")
+                last_progress_time = time.time()
+            
             entry = self.read_entry_at_offset(current_offset)
             
             if not entry:
@@ -270,10 +281,27 @@ class DmodLogMonitor:
         
         # Read and display all existing entries on startup
         if self.last_id > 0 and control['tail_offset'] != control['head_offset']:
-            print("Reading existing log entries...\n")
-            entries = self.read_entries_from_tail(control['tail_offset'], control['head_offset'], 1)
+            # Limit how many old entries we display on startup to avoid long delays
+            # Only show the most recent entries
+            max_startup_entries = self.max_startup_entries
+            start_id = max(1, self.last_id - max_startup_entries + 1)
+            
+            if start_id > 1:
+                print(f"Reading existing log entries (showing last {max_startup_entries})...\n")
+            else:
+                print("Reading existing log entries...\n")
+            
+            logger.debug(f"Reading entries from tail, filtering for id >= {start_id}")
+            entries = self.read_entries_from_tail(control['tail_offset'], control['head_offset'], start_id)
+            
+            logger.debug(f"Found {len(entries)} entries to display")
+            
             for entry in entries:
                 print(entry['message'], end='')
+                # Flush output to ensure it's visible immediately
+                import sys
+                sys.stdout.flush()
+            
             if entries:
                 print()  # Extra newline after existing entries
         
@@ -342,6 +370,8 @@ def main():
                         help='Polling interval in seconds (default: 0.1)')
     parser.add_argument('--addr-file', default=None,
                         help='Address file path (default: build/TARGET_dmod_addresses.txt)')
+    parser.add_argument('--max-startup-entries', type=int, default=100,
+                        help='Maximum number of old entries to show on startup (default: 100)')
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug logging')
     
@@ -405,7 +435,7 @@ def main():
     
     monitor = DmodLogMonitor(
         client, ring_addr, ring_control_size, total_size, 
-        max_entry_size, expected_magic
+        max_entry_size, expected_magic, args.max_startup_entries
     )
     
     try:

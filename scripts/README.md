@@ -38,6 +38,9 @@ python3 scripts/dmod_log_monitor.py --host 192.168.1.100 --port 4444
 # Custom polling interval (default: 0.1 seconds)
 python3 scripts/dmod_log_monitor.py --interval 0.05
 
+# Limit old entries shown on startup (useful for slow connections)
+python3 scripts/dmod_log_monitor.py --max-startup-entries 50
+
 # Use custom address file
 python3 scripts/dmod_log_monitor.py --addr-file /path/to/addresses.txt
 ```
@@ -50,6 +53,7 @@ python3 scripts/dmod_log_monitor.py --addr-file /path/to/addresses.txt
 | `--host` | localhost | OpenOCD host address |
 | `--port` | 4444 | OpenOCD telnet port |
 | `--interval` | 0.1 | Polling interval in seconds |
+| `--max-startup-entries` | 100 | Maximum old entries shown on startup (prevents slow reads) |
 | `--addr-file` | auto | Path to address file (auto-detected from target) |
 | `--debug` | disabled | Enable detailed debug logging |
 
@@ -197,6 +201,21 @@ python3 scripts/dmod_log_monitor.py --interval 0.01
 # Slower polling (lower CPU usage)
 python3 scripts/dmod_log_monitor.py --interval 0.5
 ```
+
+For systems with many buffered logs (e.g., running for a long time), limit startup reads:
+
+```bash
+# Show only last 50 entries on startup (faster connection)
+python3 scripts/dmod_log_monitor.py --max-startup-entries 50
+
+# Show only last 10 entries (very fast)
+python3 scripts/dmod_log_monitor.py --max-startup-entries 10
+
+# Show all entries (may be slow with 100+ buffered logs)
+python3 scripts/dmod_log_monitor.py --max-startup-entries 1000
+```
+
+**Note**: Reading entries over OpenOCD is relatively slow (~6ms per entry). If you have 300 buffered entries, it will take ~2 seconds to read them all. The default limit of 100 entries provides a good balance between seeing recent logs and connection speed.
 
 ### Troubleshooting
 
