@@ -83,9 +83,18 @@ class OpenOCDClient:
     
     def read_memory(self, address, size):
         """Read memory from target"""
-        # mdw reads in words (4 bytes), so we need to round up
-        words_needed = (size + 3) // 4  # Round up to next word boundary
-        cmd = f"mdw 0x{address:08x} {words_needed}"
+        # mdw reads in words (4 bytes) and always aligns to word boundaries
+        # We need to handle unaligned reads correctly
+        
+        # Calculate alignment offset
+        alignment_offset = address % 4
+        aligned_address = address - alignment_offset
+        
+        # Calculate how many words we need to read, accounting for alignment
+        total_bytes_needed = alignment_offset + size
+        words_needed = (total_bytes_needed + 3) // 4  # Round up to next word boundary
+        
+        cmd = f"mdw 0x{aligned_address:08x} {words_needed}"
         response = self.send_command(cmd)
         if not response:
             logger.debug(f"No response from OpenOCD for command: {cmd}")
@@ -124,7 +133,12 @@ class OpenOCDClient:
         for word in words:
             data += struct.pack('<I', word)
         
-        return data[:size] if len(data) >= size else None
+        # Skip alignment offset and return exactly the requested size
+        if len(data) >= alignment_offset + size:
+            return data[alignment_offset:alignment_offset + size]
+        else:
+            logger.debug(f"Not enough data: got {len(data)} bytes, need {alignment_offset + size} bytes")
+            return None
 
     def close(self):
         """Close connection"""

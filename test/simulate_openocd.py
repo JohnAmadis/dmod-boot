@@ -177,14 +177,19 @@ class SimulatedOpenOCD:
                     count = int(parts[2])
                     print(f"  Reading {count} words from 0x{address:08x}")
                     
+                    # OpenOCD aligns to word boundaries for mdw
+                    aligned_address = address & ~0x3  # Align to 4-byte boundary
+                    if aligned_address != address:
+                        print(f"  Aligned to 0x{aligned_address:08x}")
+                    
                     # Read memory
-                    data = self.memory.read_bytes(address, count * 4)
+                    data = self.memory.read_bytes(aligned_address, count * 4)
                     if data:
                         print(f"  Got {len(data)} bytes")
                         # Format response like OpenOCD
                         response = []
                         for i in range(0, len(data), 16):  # Process 4 words at a time
-                            addr = address + i
+                            addr = aligned_address + i
                             response.append(f"0x{addr:08x}:")
                             for j in range(i, min(i + 16, len(data)), 4):
                                 word = struct.unpack('<I', data[j:j+4])[0]
@@ -197,6 +202,8 @@ class SimulatedOpenOCD:
                         print(f"  No data returned")
                 except Exception as e:
                     print(f"  Error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return f"Error: {e}\r\n"
         
         print(f"  Unknown command")
