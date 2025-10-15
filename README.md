@@ -349,7 +349,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Related Projects
 
-- [dmod](https://github.com/JohnAmadis/dmod) - Dynamic modules library for embedded architectures
+- [dmod](https://github.com/choco-technologies/dmod) - Dynamic modules library for embedded architectures
 
 ## References
 
