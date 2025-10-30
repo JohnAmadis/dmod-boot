@@ -123,7 +123,7 @@ add_custom_target(connect
 # Custom target for monitoring log output
 add_custom_target(monitor
     COMMAND python3 ${SCRIPTS_DIR}/dmod_log_monitor.py --target ${TARGET}
-    DEPENDS ${TARGET}_dmod_addresses.txt
+    DEPENDS ${TARGET}.elf
     COMMENT "Starting log monitor for ${TARGET}..."
 )
 
