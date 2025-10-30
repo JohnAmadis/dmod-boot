@@ -53,7 +53,7 @@ jobs:
         arm-none-eabi-size build/${{ matrix.target }}.elf
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: make-${{ matrix.target }}-firmware
         path: |
@@ -109,7 +109,7 @@ jobs:
         arm-none-eabi-size build-cmake/${{ matrix.target }}.elf
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: cmake-${{ matrix.target }}-firmware
         path: |
