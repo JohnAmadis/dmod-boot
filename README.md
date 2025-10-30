@@ -41,7 +41,8 @@ dmod-boot/
 │   └── main.c           # Simple example with ring buffer output
 ├── scripts/              # Utility scripts
 │   └── dmod_log_monitor.py # OpenOCD log monitoring script
-├── Makefile             # Build system
+├── Makefile             # Build system (Make)
+├── CMakeLists.txt       # Build system (CMake)
 └── README.md           # This file
 ```
 
@@ -54,9 +55,12 @@ dmod-boot/
   - macOS: `brew install arm-none-eabi-gcc`
   - Windows: Download from [ARM Developer](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm)
 
-- **Make**: Build automation tool
-  - Usually pre-installed on Linux/macOS
-  - Windows: Install via MSYS2 or use WSL
+- **Build System**: Choose one (or both)
+  - **Make**: Build automation tool (usually pre-installed on Linux/macOS)
+  - **CMake**: Cross-platform build system (version 3.15+)
+    - Ubuntu/Debian: `sudo apt-get install cmake`
+    - macOS: `brew install cmake`
+    - Windows: Download from [cmake.org](https://cmake.org/download/)
 
 ### Optional Tools (for debugging)
 
@@ -67,7 +71,9 @@ dmod-boot/
 
 ## Quick Start
 
-### 1. Build and Flash Firmware
+### Using Make
+
+#### 1. Build and Flash Firmware
 
 ```bash
 # Build for default target (STM32F746)
@@ -81,21 +87,44 @@ make TARGET=STM32F407
 make install TARGET=STM32F407
 ```
 
+### Using CMake
+
+#### 1. Build and Flash Firmware
+
+```bash
+# Build for default target (STM32F746)
+mkdir build
+cd build
+cmake ..
+cmake --build .
+
+# Or build for specific target
+mkdir build
+cd build
+cmake .. -DTARGET=STM32F407
+cmake --build .
+
+# Flash to target (from build directory)
+cmake --build . --target install-firmware
+```
+
 ### 2. Connect and Monitor Logs
 
 ```bash
 # Start OpenOCD in background (separate terminal)
-make connect
+make connect  # or from CMake: cmake --build . --target connect
 
 # Monitor real-time logs (another terminal)
-make monitor
+make monitor  # or from CMake: cmake --build . --target monitor
 ```
 
 That's it! You should see live debug output from your microcontroller.
 
 ## Development Workflow
 
-The integrated Makefile provides a complete development workflow:
+Both Make and CMake provide a complete development workflow:
+
+### Using Make
 
 | Command | Description |
 |---------|-------------|
@@ -107,7 +136,18 @@ The integrated Makefile provides a complete development workflow:
 | `make clean` | Clean build artifacts |
 | `make help` | Show all available commands |
 
-### Example Development Session
+### Using CMake
+
+| Command | Description |
+|---------|-------------|
+| `cmake .. -DTARGET=STM32F746` | Configure for specific target |
+| `cmake --build .` | Build firmware |
+| `cmake --build . --target install-firmware` | Flash firmware to target |
+| `cmake --build . --target connect` | Start OpenOCD server for debugging |
+| `cmake --build . --target monitor` | Monitor live debug logs from target |
+| `cmake --build . --target disasm` | Generate disassembly |
+
+### Example Development Session (Make)
 
 ```bash
 # 1. Build and flash your code
@@ -125,9 +165,32 @@ make install
 # Logs will update automatically in monitor terminal
 ```
 
+### Example Development Session (CMake)
+
+```bash
+# 1. Build and flash your code
+mkdir build && cd build
+cmake .. -DTARGET=STM32F746
+cmake --build .
+cmake --build . --target install-firmware
+
+# 2. In separate terminal - start debugging server
+cmake --build . --target connect
+
+# 3. In another terminal - watch live logs
+cmake --build . --target monitor
+
+# 4. Make code changes, then rebuild and reflash
+cmake --build .
+cmake --build . --target install-firmware
+# Logs will update automatically in monitor terminal
+```
+
 ## Building
 
-### Build for STM32F746
+### Using Make
+
+#### Build for STM32F746
 
 ```bash
 make TARGET=STM32F746
@@ -135,7 +198,7 @@ make TARGET=STM32F746
 make stm32f746
 ```
 
-### Build for STM32F407
+#### Build for STM32F407
 
 ```bash
 make TARGET=STM32F407
@@ -143,15 +206,51 @@ make TARGET=STM32F407
 make stm32f407
 ```
 
-### Build All Targets
+#### Build All Targets
 
 ```bash
 make all-targets
 ```
 
+### Using CMake
+
+#### Build for STM32F746
+
+```bash
+mkdir build && cd build
+cmake .. -DTARGET=STM32F746
+cmake --build .
+```
+
+#### Build for STM32F407
+
+```bash
+mkdir build && cd build
+cmake .. -DTARGET=STM32F407
+cmake --build .
+```
+
+#### Build All Targets
+
+```bash
+# Build STM32F746
+mkdir build-f746 && cd build-f746
+cmake .. -DTARGET=STM32F746
+cmake --build .
+cd ..
+
+# Build STM32F407
+mkdir build-f407 && cd build-f407
+cmake .. -DTARGET=STM32F407
+cmake --build .
+cd ..
+```
+
 ### Configure Ring Buffer Size
 
-You can customize the ring buffer configuration using Makefile variables:
+You can customize the ring buffer configuration:
+
+#### Using Make
 
 ```bash
 # Build with custom ring buffer settings
@@ -162,10 +261,32 @@ make TARGET=STM32F746 DMOD_LOG_TOTAL_SIZE=16384 DMOD_LOG_MAX_ENTRY_SIZE=1024
 # DMOD_LOG_MAX_ENTRY_SIZE=512    (maximum size of a single log entry)
 ```
 
+#### Using CMake
+
+```bash
+# Build with custom ring buffer settings
+mkdir build && cd build
+cmake .. -DTARGET=STM32F746 -DDMOD_LOG_TOTAL_SIZE=16384 -DDMOD_LOG_MAX_ENTRY_SIZE=1024
+cmake --build .
+
+# Default values:
+# DMOD_LOG_TOTAL_SIZE=8192       (total buffer size in bytes)
+# DMOD_LOG_MAX_ENTRY_SIZE=512    (maximum size of a single log entry)
+```
+
 ### Clean Build Artifacts
+
+#### Using Make
 
 ```bash
 make clean
+```
+
+#### Using CMake
+
+```bash
+# Remove build directory
+rm -rf build/
 ```
 
 ### View Help
@@ -176,7 +297,12 @@ make help
 
 ## Output Files
 
-After building, the following files will be generated in the `build/` directory:
+After building, the following files will be generated:
+
+- **Make**: Files are in the `build/` directory
+- **CMake**: Files are in the `build/` or your chosen build directory
+
+Generated files:
 
 - `<TARGET>.elf` - ELF executable with debug symbols
 - `<TARGET>.bin` - Raw binary file for flashing
