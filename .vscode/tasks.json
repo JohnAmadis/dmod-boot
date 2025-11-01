@@ -1,6 +1,49 @@
 {
     "version": "2.0.0",
+    "inputs": [
+        {
+            "id": "targetSelection",
+            "description": "Select target microcontroller",
+            "default": "STM32F746xG",
+            "type": "pickString",
+            "options": [
+                {
+                    "label": "STM32F746xG (Cortex-M7, 1MB Flash, 320KB RAM)",
+                    "value": "STM32F746xG"
+                },
+                {
+                    "label": "STM32F746ZG (Cortex-M7, 1MB Flash, 320KB RAM)",
+                    "value": "STM32F746ZG"
+                },
+                {
+                    "label": "STM32F407G (Cortex-M4, 1MB Flash, 128KB RAM)",
+                    "value": "STM32F407G"
+                }
+            ]
+        }
+    ],
     "tasks": [
+        {
+            "label": "Configure CMake (Select Target)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-DCMAKE_BUILD_TYPE=Debug",
+                "-DTARGET=${input:targetSelection}",
+                "-S",
+                ".",
+                "-B",
+                "build"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
         {
             "label": "Build DMOD Boot (Debug)",
             "type": "shell",
@@ -25,26 +68,7 @@
             "problemMatcher": [
                 "$gcc"
             ],
-            "dependsOn": "Configure CMake (Debug)"
-        },
-        {
-            "label": "Configure CMake (Debug)",
-            "type": "shell",
-            "command": "cmake",
-            "args": [
-                "-DCMAKE_BUILD_TYPE=Debug",
-                "-S",
-                ".",
-                "-B",
-                "build"
-            ],
-            "group": "build",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            }
+            "dependsOn": "Configure CMake (Select Target)"
         },
         {
             "label": "Clean Build",
