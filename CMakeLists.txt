@@ -19,6 +19,7 @@ set(TARGET "STM32F746xG" CACHE STRING "Target microcontroller")
 # ======================================================================
 #               DMOD Configuration
 # ======================================================================
+set(DMOD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/dmod")
 include(configs/dmod-cfg.cmake)
 include(configs/mcu/${TARGET}.cmake)
 
@@ -26,4 +27,5 @@ include(configs/mcu/${TARGET}.cmake)
 #               Subdirectories
 # ======================================================================
 add_subdirectory(lib)
+add_subdirectory(inc)
 add_subdirectory(src)
