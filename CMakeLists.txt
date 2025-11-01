@@ -42,6 +42,13 @@ add_executable(${MODULE_NAME}.elf
     src/main.c
 )
 
+target_link_options(${MODULE_NAME}.elf
+    PRIVATE 
+        -T${CMAKE_CURRENT_SOURCE_DIR}/configs/arch/${DMBOOT_ARCH}/arch.ld
+        -T${CMAKE_CURRENT_SOURCE_DIR}/configs/mcu/${DMBOOT_MCU_SERIES}/${DMBOOT_MCU_NAME}.ld
+        -Wl,-Map=${MODULE_NAME}.map
+)
+
 target_link_libraries(${MODULE_NAME}.elf
     PRIVATE 
         dmod
