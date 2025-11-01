@@ -14,7 +14,7 @@ PROVIDE(__dma_start__ = ORIGIN(dma));
 PROVIDE(__dma_size__  = LENGTH(dma));
 PROVIDE(__dma_end__   = __dma_start__ + __dma_size__);
 
-ENTRY(_start);
+ENTRY(Reset_Handler);
 
 __stack_size__    = 4096;
 
