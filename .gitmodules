@@ -1,0 +1,3 @@
+[submodule "lib/dmod"]
+	path = lib/dmod
+	url = https://github.com/choco-technologies/dmod.git
