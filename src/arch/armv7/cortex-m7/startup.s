@@ -116,8 +116,10 @@ Branch to low_level_init_1() function
 /*==============================================================================
 Branch to main() with link
 ==============================================================================*/
-   ldr      r0, =main
-   blx      r0
+   movs     r0, #0                          // argc = 0 (no command line arguments)
+   movs     r1, #0                          // argv = NULL (no argument array)
+   ldr      r2, =main
+   blx      r2
 
 /*==============================================================================
 Call C++ destructors for global and static objects
