@@ -55,3 +55,20 @@ target_link_libraries(${MODULE_NAME}.elf
         dmboot_inc
         dmboot_startup
 )
+
+
+# ======================================================================
+#               OpenOCD Integration
+# ======================================================================
+add_custom_target(install-firmware
+    COMMAND ${OPENOCD} -f ${OPENOCD_INTERFACE} -f ${OPENOCD_TARGET}
+        -c "program ${MODULE_NAME}.elf verify reset exit"
+    DEPENDS ${MODULE_NAME}.elf
+    COMMENT "Installing firmware on ${TARGET}..."
+)
+
+# Custom target for connecting to target with OpenOCD
+add_custom_target(connect
+    COMMAND ${OPENOCD} -f ${OPENOCD_INTERFACE} -f ${OPENOCD_TARGET}
+    COMMENT "Connecting to ${TARGET} with OpenOCD..."
+)
