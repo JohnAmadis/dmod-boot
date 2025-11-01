@@ -14,14 +14,16 @@ project(dmboot
 # ======================================================================
 #               Configuration
 # ======================================================================
-set(TARGET "STM32F746" CACHE STRING "Target microcontroller")
+set(TARGET "stm32f746ngh6" CACHE STRING "Target microcontroller")
 
 # ======================================================================
 #               DMOD Configuration
 # ======================================================================
 include(configs/dmod-cfg.cmake)
+include(configs/mcu/${TARGET}.cmake)
 
 # ======================================================================
 #               Subdirectories
 # ======================================================================
 add_subdirectory(lib)
+add_subdirectory(src)
