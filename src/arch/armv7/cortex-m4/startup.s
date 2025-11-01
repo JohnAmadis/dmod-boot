@@ -3,11 +3,11 @@
 *
 * File is based on Freddie Chopin's startup file
 *
-* chip: ARMv7-M (Cortex-M7)
+* chip: ARMv7-M (Cortex-M4)
 * compiler: arm-none-eabi-gcc
 *
 * description:
-* ARMv7-M (Cortex-M7) assembly startup code
+* ARMv7-M (Cortex-M4) assembly startup code
 *******************************************************************************/
 
 /* CONTROL - The special-purpose control register */
@@ -18,7 +18,7 @@
 #define CONTROL_ALTERNATE_STACK             (1 << CONTROL_ALTERNATE_STACK_bit)
 
 /*==============================================================================
-Vector table for ARM Cortex-M7
+Vector table for ARM Cortex-M4
 ==============================================================================*/
 
 .section .vectors, "a", %progbits
@@ -44,7 +44,7 @@ vectors:
     .word   SysTick_Handler                  /* 15: SysTick Handler */
 
 /*==============================================================================
-ARMv7-M (Cortex-M7) startup code
+ARMv7-M (Cortex-M4) startup code
 ==============================================================================*/
 
 .text
