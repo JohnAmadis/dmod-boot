@@ -14,7 +14,7 @@ project(dmboot
 # ======================================================================
 #               Configuration
 # ======================================================================
-set(TARGET "stm32f746ngh6" CACHE STRING "Target microcontroller")
+set(TARGET "STM32F746xG" CACHE STRING "Target microcontroller")
 
 # ======================================================================
 #               DMOD Configuration
