@@ -24,7 +24,7 @@ include(${DMOD_DIR}/configs/arch/${DMBOOT_ARCH}/tools-cfg.cmake)
 project(dmboot
     VERSION 1.0
     DESCRIPTION "DMOD Bootloader"
-    LANGUAGES C CXX)
+    LANGUAGES C CXX ASM)
 
 # ======================================================================
 #               Subdirectories
@@ -46,6 +46,7 @@ target_link_options(${MODULE_NAME}.elf
     PRIVATE 
         -T${CMAKE_CURRENT_SOURCE_DIR}/configs/arch/${DMBOOT_ARCH}/arch.ld
         -T${CMAKE_CURRENT_SOURCE_DIR}/configs/mcu/${DMBOOT_MCU_SERIES}/${DMBOOT_MCU_NAME}.ld
+        -T${CMAKE_CURRENT_SOURCE_DIR}/linker/common.ld
         -Wl,-Map=${MODULE_NAME}.map
 )
 
@@ -60,6 +61,14 @@ target_link_libraries(${MODULE_NAME}.elf
 # ======================================================================
 #               OpenOCD Integration
 # ======================================================================
+
+# Generate GDB init script from template with target-specific variables
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/configs/gdb/gdb_init.gdb.in
+    ${CMAKE_BINARY_DIR}/gdb_init.gdb
+    @ONLY
+)
+
 add_custom_target(install-firmware
     COMMAND ${OPENOCD} -f ${OPENOCD_INTERFACE} -f ${OPENOCD_TARGET}
         -c "program ${MODULE_NAME}.elf verify reset exit"
@@ -71,4 +80,12 @@ add_custom_target(install-firmware
 add_custom_target(connect
     COMMAND ${OPENOCD} -f ${OPENOCD_INTERFACE} -f ${OPENOCD_TARGET}
     COMMENT "Connecting to ${TARGET} with OpenOCD..."
+)
+
+# Custom target for debugging with GDB (connects to OpenOCD)
+add_custom_target(debug
+    COMMAND ${ARM_GDB} -x ${CMAKE_BINARY_DIR}/gdb_init.gdb ${MODULE_NAME}.elf
+    DEPENDS ${MODULE_NAME}.elf
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Starting GDB and connecting to OpenOCD..."
 )
