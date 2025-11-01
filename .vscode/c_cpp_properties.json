@@ -2,31 +2,23 @@
     "version": 4,
     "configurations": [
         {
-            "name": "ARM Cortex-M7",
+            "name": "ARM Embedded",
             "includePath": [
                 "${workspaceFolder}/src/**",
                 "${workspaceFolder}/inc/**",
                 "${workspaceFolder}/lib/dmod/inc/**",
                 "${workspaceFolder}/lib/dmod/src/**",
-                "${workspaceFolder}/build/lib/dmod/**"
+                "${workspaceFolder}/lib/dmlog/include/**",
+                "${workspaceFolder}/build/lib/dmod/**",
+                "${workspaceFolder}/build/lib/dmlog/**"
             ],
             "defines": [
-                "STM32F746xG",
-                "GCC_ARMCM7",
-                "ARM_MATH_CM7",
                 "_DEBUG"
             ],
             "compilerPath": "/usr/bin/arm-none-eabi-gcc",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "gcc-arm",
-            "compilerArgs": [
-                "-mcpu=cortex-m7",
-                "-mthumb",
-                "-mno-unaligned-access",
-                "-mabi=aapcs",
-                "-Wall"
-            ],
             "configurationProvider": "ms-vscode.cmake-tools"
         }
     ]

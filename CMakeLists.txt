@@ -53,6 +53,7 @@ target_link_options(${MODULE_NAME}.elf
 target_link_libraries(${MODULE_NAME}.elf
     PRIVATE 
         dmod
+        dmlog
         dmboot_inc
         dmboot_startup
 )

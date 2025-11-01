@@ -8,7 +8,8 @@
     "files.associations": {
         "*.ld": "linkerscript",
         "*.s": "arm",
-        "*.S": "arm"
+        "*.S": "arm",
+        "dmod.h": "c"
     },
     "cortex-debug.openocdPath": "/usr/bin/openocd",
     "cortex-debug.armToolchainPath": "/usr/bin",
