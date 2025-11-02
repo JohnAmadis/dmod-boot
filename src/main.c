@@ -1,3 +1,4 @@
+#include <string.h>
 #include "dmod.h"
 #include "dmlog.h"
 
@@ -15,12 +16,16 @@ int main(int argc, char** argv)
     void* logs_end = &__logs_end__;
     dmlog_index_t  logs_size = (dmlog_index_t)((uintptr_t)logs_end - (uintptr_t)logs_start);
     
+    memset(logs_start, 0, logs_size);
+
     dmlog_ctx_t ctx = dmlog_create(logs_start, logs_size);
+
+    dmlog_puts(ctx, "Hello dmod-boot!\n");
 
     while(1)
     {
-        dmlog_puts(ctx, "Hello, DMLoG!");
-        delay(1000000);
+        dmlog_puts(ctx, "hello from inside the loop\n");
+        delay(10000);
     }
     return 0;
 }

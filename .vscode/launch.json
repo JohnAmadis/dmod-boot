@@ -17,6 +17,10 @@
             "showDevDebugOutput": "raw",
             "device": "STM32F746xG",
             "svdFile": "${workspaceFolder}/.vscode/STM32F746.svd",
+            "openOCDLaunchCommands": [
+                "telnet_port 4444", 
+                "tcl_port 6666"
+            ],
             "preLaunchCommands": [
                 "set mem inaccessible-by-default off",
                 "set architecture arm",
