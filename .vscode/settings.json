@@ -17,5 +17,6 @@
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.exclude": {
         "**/build": false
-    }
+    },
+    "cortex-debug.variableUseNaturalFormat": false
 }

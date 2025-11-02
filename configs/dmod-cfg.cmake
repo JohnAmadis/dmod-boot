@@ -28,6 +28,9 @@ set(DMOD_USE_REALLOC OFF CACHE BOOL "Enable to use the realloc function")
 # Use FastLZ compression library
 set(DMOD_USE_FASTLZ ON CACHE BOOL "Enable to use the FastLZ compression library")
 
+# Implement custom printf 
+set(DMOD_IMPLEMENT_PRINTF ON CACHE BOOL "Enable to implement printf function inside DMOD")
+
 # Maximum number of modules
 set(DMOD_MAX_MODULES 100 CACHE STRING "Maximum number of modules")
 

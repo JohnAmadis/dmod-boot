@@ -19,12 +19,14 @@ int main(int argc, char** argv)
     memset(logs_start, 0, logs_size);
 
     dmlog_ctx_t ctx = dmlog_create(logs_start, logs_size);
+    dmlog_set_as_default(ctx);
 
     dmlog_puts(ctx, "Hello dmod-boot!\n");
 
+    int i = 0;
     while(1)
     {
-        dmlog_puts(ctx, "hello from inside the loop\n");
+        Dmod_Printf("Welcome for %d times\n", i++);
         delay(10000);
     }
     return 0;
