@@ -44,6 +44,7 @@ add_executable(${MODULE_NAME}.elf
 
 target_link_options(${MODULE_NAME}.elf
     PRIVATE 
+        -L${DMOD_DIR}/scripts
         -T${CMAKE_CURRENT_SOURCE_DIR}/configs/arch/${DMBOOT_ARCH}/arch.ld
         -T${CMAKE_CURRENT_SOURCE_DIR}/configs/mcu/${DMBOOT_MCU_SERIES}/${DMBOOT_MCU_NAME}.ld
         -T${CMAKE_CURRENT_SOURCE_DIR}/linker/common.ld

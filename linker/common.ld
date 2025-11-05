@@ -77,6 +77,8 @@ SECTIONS
       PROVIDE(__text_end__ = __text_end__);
    } > rom AT > rom
 
+   INCLUDE dmod-common.ld
+
    . = ALIGN(4);
    __exidx_start__ = .;
    PROVIDE(__exidx_start__ = __exidx_start__);
