@@ -27,7 +27,7 @@ int main(int argc, char** argv)
     while(1)
     {
         Dmod_Printf("Welcome for %d times\n", i++);
-        delay(10000);
+        //delay(10000);
     }
     return 0;
 }
