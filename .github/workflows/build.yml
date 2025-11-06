@@ -27,6 +27,16 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        submodules: false
+        fetch-depth: 0
+    
+    - name: Fix git ownership issues
+      run: |
+        git config --global --add safe.directory /__w/dmod-boot/dmod-boot
+        git config --global --add safe.directory /__w/dmod-boot/dmod-boot/lib/dmod
+        git config --global --add safe.directory /__w/dmod-boot/dmod-boot/lib/dmlog
+    
     - name: Initialize and update submodules
       run: |
         git submodule init
