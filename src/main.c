@@ -36,10 +36,11 @@ int main(int argc, char** argv)
     void* inputs_end = &__dmod_inputs_end;
     size_t inputs_size = (size_t)((uintptr_t)inputs_end - (uintptr_t)inputs_start);
 
-    DMOD_LOG_INFO("Inputs start address: %u\n", (uintptr_t)inputs_start);
+    DMOD_LOG_INFO("Inputs start address: 0x%X\n", (uintptr_t)inputs_start);
     DMOD_LOG_INFO("Inputs size: %u bytes\n", (unsigned int)inputs_size);
 
     Dmod_Initialize();
+    Dmod_LoadModule("dmod-sample-module");
 
     int i = 0;
     while(1)
