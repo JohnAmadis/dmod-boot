@@ -31,6 +31,7 @@ jobs:
 
     - name: Initialize and update submodules
       run: |
+        git config --global --add safe.directory 'lib/*'
         git submodule init
         git submodule update --recursive
     
