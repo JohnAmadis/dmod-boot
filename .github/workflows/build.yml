@@ -28,7 +28,20 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        submodules: true
+        fetch-depth: 0
+    
+    - name: Initialize and update submodules
+      run: |
+        git submodule init
+        git submodule update --recursive
+    
+    - name: Verify submodules
+      run: |
+        git submodule status
+        ls -la lib/
+        ls -la lib/dmod/
+        ls -la lib/dmod/configs/arch/armv7/cortex-m4/
     
     - name: Verify toolchain installation
       run: |
