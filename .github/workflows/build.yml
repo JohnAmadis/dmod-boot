@@ -27,10 +27,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        submodules: true
-        fetch-depth: 0
-    
     - name: Initialize and update submodules
       run: |
         git submodule init
